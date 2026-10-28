@@ -172,3 +172,7 @@ def list_messages(conn, session_id):
 
 def get_session(conn, session_id):
     return conn.execute("SELECT * FROM sessions WHERE id = ?", [session_id]).fetchone()
+
+
+def get_workspace(conn, workspace_id):
+    return conn.execute("SELECT * FROM workspaces WHERE id = ?", [workspace_id]).fetchone()

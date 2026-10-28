@@ -170,3 +170,9 @@ def test_get_session_returns_row(conn):
     s = db.create_session(conn, ws, "t")
     row = db.get_session(conn, s)
     assert (row["id"], row["workspace_id"], row["title"]) == (s, ws, "t")
+
+
+def test_get_workspace_returns_row_or_none(conn):
+    ws = db.create_workspace(conn, "w")
+    assert db.get_workspace(conn, ws)["name"] == "w"
+    assert db.get_workspace(conn, ws + 1) is None

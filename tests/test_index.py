@@ -109,3 +109,11 @@ def test_index_document_zero_chunks_marks_indexed_without_embed(conn, tmp_path):
     row = db.get_document(conn, doc_id)
     assert (row["status"], row["pages"]) == ("indexed", 0)
     assert _count(conn, "chunks") == 0
+
+
+def test_store_file_uses_given_name(conn, tmp_path):
+    ws = db.create_workspace(conn, "w")
+    src = tmp_path / "tmp123.txt"
+    src.write_text("x")
+    doc_id = index.store_file(conn, ws, src, dest_root=tmp_path / "files", name="Real.txt")
+    assert db.get_document(conn, doc_id)["name"] == "Real.txt"

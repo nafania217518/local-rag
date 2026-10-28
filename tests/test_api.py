@@ -1,0 +1,204 @@
+import json
+import threading
+
+import pytest
+from fastapi.testclient import TestClient
+
+from localrag import api, config
+
+
+def fake_embed(cfg, texts, input_type):
+    return [[0.0] * config.EMBED_DIM for _ in texts]
+
+
+def fake_rerank(cfg, query, passages):
+    return [(i, 1.0) for i in range(len(passages))]
+
+
+def fake_chat_stream(cfg, messages, *a, **k):
+    yield from [("thinking", "hmm"), ("token", "Kyiv"), ("token", " [1]")]
+
+
+def fake_parse(cfg, png):
+    return ""
+
+
+def make(tmp_path, **kw):
+    args = dict(embed=fake_embed, rerank=fake_rerank, chat_stream=fake_chat_stream,
+                parse_page=fake_parse, run_in_background=lambda fn: fn())
+    args.update(kw)
+    return TestClient(api.create_app(tmp_path / "t.db", tmp_path / "config.json", tmp_path / "files", **args))
+
+
+@pytest.fixture
+def client(tmp_path):
+    return make(tmp_path)
+
+
+def sse(body):
+    out = []
+    for block in body.strip().split("\n\n"):
+        lines = dict(line.split(": ", 1) for line in block.split("\n"))
+        out.append((lines["event"], json.loads(lines["data"])))
+    return out
+
+
+def ws(client, name="w"):
+    return client.post("/workspaces", json={"name": name}).json()["id"]
+
+
+def upload(client, w, *files):
+    return client.post(f"/workspaces/{w}/documents",
+                       files=[("files", (n, c.encode(), "text/plain")) for n, c in files])
+
+
+def test_health_reports_sqlite_vec(client):
+    r = client.get("/health").json()
+    assert r["ok"] is True and r["sqlite_vec"].startswith("v")
+
+
+def test_create_and_list_workspaces(client):
+    r = client.post("/workspaces", json={"name": "a"})
+    assert r.status_code == 201 and r.json()["name"] == "a"
+    assert [w["name"] for w in client.get("/workspaces").json()] == ["a"]
+
+
+def test_create_workspace_rejects_blank_name(client):
+    assert client.post("/workspaces", json={"name": "  "}).status_code == 422
+    assert client.post("/workspaces", json={"name": ""}).status_code == 422
+
+
+def test_delete_workspace_204_and_404(client):
+    w = ws(client)
+    assert client.delete(f"/workspaces/{w}").status_code == 204
+    assert client.delete(f"/workspaces/{w}").status_code == 404
+
+
+def test_upload_txt_creates_document_and_indexes_it(client, tmp_path):
+    w = ws(client)
+    r = upload(client, w, ("a.txt", "Kyiv is the capital"))
+    assert r.status_code == 202 and len(r.json()) == 1
+    doc = client.get(f"/workspaces/{w}/documents").json()[0]
+    assert doc["status"] == "indexed" and doc["pages"] == 1 and doc["name"] == "a.txt"
+    assert (tmp_path / "files" / str(w) / f"{doc['id']}.txt").exists()
+    assert list((tmp_path / "files" / "incoming").iterdir()) == []
+
+
+def test_upload_many_files_in_one_request(client):
+    w = ws(client)
+    assert len(upload(client, w, ("a.txt", "one"), ("b.txt", "two")).json()) == 2
+    assert [d["status"] for d in client.get(f"/workspaces/{w}/documents").json()] == ["indexed"] * 2
+
+
+def test_upload_unknown_workspace_404(client):
+    assert upload(client, 99, ("a.txt", "x")).status_code == 404
+    assert client.get("/workspaces/99/documents").status_code == 404
+
+
+def test_upload_unsupported_type_marks_failed(client):
+    w = ws(client)
+    upload(client, w, ("a.xyz", "x"))
+    doc = client.get(f"/workspaces/{w}/documents").json()[0]
+    assert doc["status"] == "failed" and "unsupported" in doc["error"].lower()
+
+
+def test_upload_indexing_error_marks_failed_and_does_not_crash_request(tmp_path):
+    def boom(*a):
+        raise RuntimeError("down")
+    client = make(tmp_path, embed=boom)
+    w = ws(client)
+    assert upload(client, w, ("a.txt", "text")).status_code == 202
+    assert client.get(f"/workspaces/{w}/documents").json()[0]["status"] == "failed"
+
+
+def test_delete_document_removes_file_and_rows(client, tmp_path):
+    w = ws(client)
+    d = upload(client, w, ("a.txt", "text")).json()[0]["id"]
+    path = tmp_path / "files" / str(w) / f"{d}.txt"
+    assert client.delete(f"/workspaces/{w + 1}/documents/{d}").status_code == 404
+    assert client.delete(f"/workspaces/{w}/documents/{d}").status_code == 204
+    assert not path.exists() and client.get(f"/workspaces/{w}/documents").json() == []
+    assert client.delete(f"/workspaces/{w}/documents/{d}").status_code == 404
+
+
+def test_sessions_create_default_title_and_list(client):
+    w = ws(client)
+    r = client.post(f"/workspaces/{w}/sessions", json={})
+    assert r.status_code == 201 and r.json()["title"] == "New chat"
+    client.post(f"/workspaces/{w}/sessions", json={"title": " "})
+    client.post(f"/workspaces/{w}/sessions", json={"title": "x"})
+    assert [s["title"] for s in client.get(f"/workspaces/{w}/sessions").json()] == ["New chat", "New chat", "x"]
+
+
+def test_messages_404_for_unknown_session(client):
+    assert client.get("/sessions/99/messages").status_code == 404
+
+
+def _session(client):
+    w = ws(client)
+    upload(client, w, ("a.txt", "Kyiv is the capital"))
+    return client.post(f"/workspaces/{w}/sessions", json={}).json()["id"]
+
+
+def test_chat_streams_sse_events_in_order(client):
+    s = _session(client)
+    r = client.post(f"/sessions/{s}/chat", json={"question": "capital?"})
+    assert r.headers["content-type"].startswith("text/event-stream")
+    events = sse(r.text)
+    assert [e for e, _ in events] == ["thinking", "token", "token", "citations", "done"]
+    assert events[1][1] == "Kyiv" and events[3][1] and events[4][1] is None
+
+
+def test_chat_persists_messages(client):
+    s = _session(client)
+    client.post(f"/sessions/{s}/chat", json={"question": "capital?"})
+    msgs = client.get(f"/sessions/{s}/messages").json()
+    assert [m["role"] for m in msgs] == ["user", "assistant"]
+    assert msgs[1]["content"] == "Kyiv [1]" and msgs[1]["citations"]
+
+
+def test_chat_blank_question_422(client):
+    s = _session(client)
+    assert client.post(f"/sessions/{s}/chat", json={"question": " "}).status_code == 422
+
+
+def test_chat_unknown_session_404(client):
+    assert client.post("/sessions/99/chat", json={"question": "q"}).status_code == 404
+
+
+def test_chat_error_mid_stream_emits_error_event(tmp_path):
+    def bad(*a, **k):
+        yield "token", "Ky"
+        raise RuntimeError("model died")
+    client = make(tmp_path, chat_stream=bad)
+    s = _session(client)
+    events = sse(client.post(f"/sessions/{s}/chat", json={"question": "q"}).text)
+    assert events[0] == ("token", "Ky")
+    assert events[-1][0] == "error" and "model died" in events[-1][1]["message"]
+
+
+def test_settings_get_defaults_and_put_merges(client, tmp_path):
+    assert client.get("/settings").json() == config.DEFAULTS
+    r = client.put("/settings", json={"api_key": "k", "rerank": False})
+    assert r.json() == {**config.DEFAULTS, "api_key": "k", "rerank": False}
+    assert client.get("/settings").json() == r.json()
+    assert (tmp_path / "config.json").exists()
+
+
+def test_background_runner_default_uses_thread(tmp_path, monkeypatch):
+    calls = []
+
+    class Rec:
+        def __init__(self, target, daemon):
+            calls.append(daemon)
+            self.target = target
+
+        def start(self):
+            calls.append("start")
+            self.target()
+
+    monkeypatch.setattr(threading, "Thread", Rec)
+    client = TestClient(api.create_app(tmp_path / "t.db", tmp_path / "c.json", tmp_path / "f",
+                                       embed=fake_embed, parse_page=fake_parse))
+    upload(client, ws(client), ("a.txt", "x"))
+    assert calls == [True, "start"]

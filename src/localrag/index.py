@@ -50,9 +50,9 @@ def files_dir() -> Path:
     return config.app_data_dir() / "files"
 
 
-def store_file(conn, workspace_id, src_path, dest_root=None):
+def store_file(conn, workspace_id, src_path, dest_root=None, name=None):
     src = Path(src_path)
-    doc_id = db.create_document(conn, workspace_id, name=src.name, path="")
+    doc_id = db.create_document(conn, workspace_id, name=name or src.name, path="")
     dest = Path(dest_root or files_dir()) / str(workspace_id) / f"{doc_id}{src.suffix}"
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(src, dest)
