@@ -1,6 +1,6 @@
 # Local RAG Desktop — Design
 
-Status: draft v1, 2026-10-28. Decisions below come from the design quiz and from the sources in [Sources](#sources).
+Status: v1 implemented (phases 0 to 8), 2026-10-28. Decisions come from the design quiz and the sources in [Sources](#sources). Live-probe results are from the same day.
 
 ## 1. Goal
 
@@ -30,9 +30,9 @@ All calls use one API key (`NVIDIA_API_KEY`) as a Bearer token.
 | Chat | `nvidia/nemotron-3.5-super-vl-120b-a12b` | `POST https://integrate.api.nvidia.com/v1/chat/completions` | 1M context, 120B MoE with 12B active, free hosted endpoint (the backend serves the text Super 3.5 model). Live-tested 2026-10-28: correct Ukrainian and Russian answers with [n] citations in about 1 s. `reasoning_effort: "none"` accepted and disables thinking. `stream: true` for SSE |
 | Embeddings | `nvidia/nemotron-3.5-embed-8b` | `POST https://integrate.api.nvidia.com/v1/embeddings` | Max 10240 tokens per input, 4096 dims, L2-normalized. Evaluated on 34 text languages (Ukrainian and Russian included). `input_type` is required: `passage` for indexing, `query` for questions. `truncate: END` |
 | Rerank | `nvidia/nemotron-3.5-rerank-8b` | `POST https://ai.api.nvidia.com/v1/retrieval/nvidia/nemotron-3.5-rerank-8b/reranking` | Same 34 languages as the embed model. Not OpenAI-shaped: body is `{model, query:{text}, passages:[{text}], truncate:"END"}`, max 512 passages |
-| OCR / page parse | `nvidia/nemotron-parse` | `POST https://integrate.api.nvidia.com/v1/chat/completions` | One page image per request as a base64 `image_url` content part. Returns the page as a `markdown_bbox` tool call: a JSON list of elements with `bbox`, `text`, `type` in reading order; the client joins the texts. `max_tokens` 3500. Live-tested 2026-10-28. `nemotron-parse-2.0` is the intended successor but its hosted endpoint returned 502 upstream on every request that day; the client also accepts plain `content`, so switching back is a setting |
+| OCR / page parse | `nvidia/nemotron-parse` | `POST https://integrate.api.nvidia.com/v1/chat/completions` | One page image per request as a base64 `image_url` content part. Returns the page as a `markdown_bbox` tool call: a JSON list of elements with `bbox`, `text`, `type` in reading order; the client joins the texts. `max_tokens` 3500. Live-tested 2026-10-28. `nemotron-parse-2.0` is the successor, but its hosted endpoint returned 502 upstream all day; the client also accepts plain `content`, so switching is a setting |
 
-Why parse instead of the OCR NIM: the hosted `nemoretriever-ocr-v1` endpoint is deprecated, and `nemotron-ocr-v2` returns word boxes, not reading-order text. `nemotron-parse-2.0` runs through the same chat endpoint and returns page Markdown. One client, one auth path.
+Why parse instead of the OCR NIM: the hosted `nemoretriever-ocr-v1` endpoint is deprecated, and `nemotron-ocr-v2` returns word boxes, not reading-order text. `nemotron-parse` runs through the same chat endpoint and returns page Markdown. One client, one auth path.
 
 Rate limit: build.nvidia.com allows 40 requests per minute in total, across all models. `nvidia.py` enforces one global sliding-window throttle (`RPM = 40`, thread-safe) that every outgoing request passes through, and retries 429 and 5xx responses with exponential backoff (1, 2, 4, 8 s, or the `Retry-After` header), at most 5 attempts. The SDK's own retries are off. Consequence for ingestion: a scanned 30-page PDF costs about 31 requests (30 parse calls plus one embed batch), so about one such document per minute. The UI shows per-document status so this is visible, not silent.
 
@@ -46,8 +46,8 @@ Chat model comparison for Ukrainian, Russian and English (all hosted on the cata
 |---|---|---|---|
 | `nvidia/nemotron-3.5-super-vl-120b-a12b` | No. Post-training: FR, DE, IT, JA, ES, ZH | 1M | **Default.** Live probe 2026-10-28: correct Ukrainian and Russian RAG answers with citations in 1 s. Backend id `nemotron-3.5-super-120b-a12b` |
 | `nvidia/nemotron-3.5-lightning-30b-a3b` | No. EN, ES, FR, DE, IT, JA | 1M | Fallback. Live probe: correct Ukrainian answer with citation in 1 s |
-| `deepseek-ai/deepseek-v4-flash` | No official list; top-3 on a community Ukrainian leaderboard | 1M | **Gone.** Catalog returns 410, end of life 2026-08-07. `deepseek-ai/deepseek-v4.1-flash` is listed but timed out twice (504, then no answer in 150 s) |
-| `qwen/qwen3-next-80b-a3b-instruct` | Yes, both (Qwen3 report, 119 languages; Russian benchmarked) | 256K | Best language evidence, but no free hosted endpoint at the time of writing (user check). Fallback if DeepSeek answers are weak in Ukrainian |
+| `deepseek-ai/deepseek-v4-flash` | No official list; top-3 on a community Ukrainian leaderboard | 1M | Gone: catalog returns 410, end of life 2026-08-07. `deepseek-ai/deepseek-v4.1-flash` is listed but timed out twice (504, then no answer in 150 s) |
+| `qwen/qwen3-next-80b-a3b-instruct` | Yes, both (Qwen3 report, 119 languages; Russian benchmarked) | 256K | Best language evidence, but no free hosted endpoint (user check, 2026-10-28) |
 | `nvidia/nemotron-3-super-120b-a12b` | No. EN, FR, DE, IT, JA, ES, ZH | 1M | Live probe: 404 for this account |
 | `nvidia/nemotron-3-ultra-550b-a55b` | No. EN, FR, ES, IT, DE, JA, KO, HI, PT, ZH | 1M | Largest, slowest, no gain for these languages |
 | `z-ai/glm-5.3-flash` | No list published. Model card tags English and Chinese only | 1M | Live probe: no answer in 150 s |
@@ -100,7 +100,7 @@ FTS5 is compiled into the Python 3.12+ `sqlite3` module on macOS and Windows. St
 
 1. Copy file into the files folder, insert `documents` row with `status=pending`.
 2. Parse → list of `(page, text)`:
-   - PDF: PyMuPDF `page.get_text()`. If a page has fewer than 20 characters of text, render it to PNG at 150 DPI and send to `nemotron-parse-2.0`. Per-page decision, so mixed PDFs work.
+   - PDF: PyMuPDF `page.get_text()`. If a page has fewer than 20 characters of text, render it to PNG at 150 DPI and send it to the parse model (`parse_model` setting). Per-page decision, so mixed PDFs work.
    - DOCX: `python-docx` paragraphs and table cells, page = 1.
    - TXT/MD: whole file, page = 1.
    - Parsers are a dict `{".pdf": parse_pdf, ...}`; a new format is one new entry (open-closed).
@@ -138,8 +138,8 @@ DELETE          /workspaces/{id}/documents/{doc_id}
 GET/POST        /workspaces/{id}/sessions    list, create
 GET             /sessions/{id}/messages
 POST            /sessions/{id}/chat          body {question} → SSE stream
-GET/PUT         /settings                    api_key, chat_model, rerank
-GET             /health                      also checks FTS5
+GET/PUT         /settings                    config.json keys, see 4.7
+GET             /health                      checks FTS5 and sqlite-vec
 ```
 
 ### 4.6 UI (`static/index.html`)
@@ -157,8 +157,8 @@ No translation layer. The embed and rerank models map text from different langua
 Limits to know:
 - FTS5 uses the `unicode61` tokenizer with `remove_diacritics 2`. It matches exact tokens in any script and does no stemming (the `porter` stemmer is English only). Inflected languages lose some keyword recall; the vector path and the reranker cover that.
 - The chat model is the only language-limited component. Every Nemotron chat model lists Western European languages, Japanese and Chinese, none lists Ukrainian. The default is `nvidia/nemotron-3.5-super-vl-120b-a12b`: despite its official list it answered Ukrainian and Russian RAG questions correctly in the live probe (see the table in section 3). The system prompt tells the model to answer in the language of the question. Lightning is the fast fallback; Qwen3-Next if it gets a free endpoint.
-- Phase 5 includes a live smoke test (opt-in, needs the API key): one Ukrainian question over a Ukrainian passage, one Russian, one cross-lingual (English question, Ukrainian passage).
-- Scanned pages: `nemotron-parse-2.0` is multilingual by model card; verify on a sample page in the target language during phase 3.
+- `tests/test_live_languages.py` (opt-in, needs `NVIDIA_API_KEY`): one Ukrainian question over a Ukrainian passage, one Russian, one cross-lingual (English question, Ukrainian passage). All three passed on 2026-10-28.
+- Scanned pages: `nemotron-parse` is multilingual by model card. Not yet verified on a Ukrainian or Russian scanned page.
 
 ### 4.9 SOLID mapping
 
@@ -183,7 +183,7 @@ Tools: `pytest`, `pytest-cov`, `respx`, `pytest-playwright`. Live NVIDIA calls a
 
 ## 6. Implementation phases
 
-Each phase: requirements → tests → code, by an Opus sub-agent (low effort). A phase is done when its tests pass and coverage holds.
+Each phase: requirements → tests → code, by an Opus sub-agent (low effort). A phase is done when its tests pass and coverage holds. Each phase is one branch (`phase-N/<name>`) and one commit.
 
 | # | Phase | Deliverable | Key requirements (= test names) |
 |---|---|---|---|
@@ -197,7 +197,7 @@ Each phase: requirements → tests → code, by an Opus sub-agent (low effort). 
 | 7 | UI + launcher | `static/index.html`, `app.py` | Playwright: create workspace, upload, see status, ask, see streamed answer and sources, open settings |
 | 8 | Packaging | `localrag.spec`, `--serve` flag, CI `build` job with artifacts | `test_spec_*`, `test_main_serve_flag_*`, CI smoke `/health` on the bundle on both OS |
 
-Phase order is strict 0→6. Phase 7 and 8 can run in parallel after 6.
+All phases are implemented; `uv run pytest` is the proof.
 
 ## 7. Out of scope (v1)
 
@@ -205,7 +205,7 @@ Local models, translation layer, images in answers, document editing, multi-user
 
 ## 8. Caveats found during research
 
-- `nemoretriever-ocr-v1` hosted endpoint is deprecated. Use `nemotron-parse-2.0` (chat endpoint) for scanned pages.
+- `nemoretriever-ocr-v1` hosted endpoint is deprecated. Scanned pages go through the chat endpoint with `nemotron-parse` (v1), which answers as a `markdown_bbox` tool call. `nemotron-parse-2.0` is the successor, but its hosted context is 4096 tokens (`max_tokens` above that is a 400) and its endpoint returned 502 upstream on 2026-10-28.
 - `nemotron-3.5-embed-8b` requires `input_type`; wrong mode silently degrades retrieval.
 - The vec0 table fixes the embedding dimension (4096). Changing the embed model requires a full re-index.
 - Rerank is not on the OpenAI base URL; it lives on `ai.api.nvidia.com/v1/retrieval/...`.
@@ -215,14 +215,13 @@ Local models, translation layer, images in answers, document editing, multi-user
 - pywebview docs suggest py2app on macOS; PyInstaller also works and is the single tool used here.
 - No Nemotron chat model on the catalog lists Ukrainian in its hosted model card, yet Super VL and Lightning answered Ukrainian and Russian correctly in the live probe. Qwen3-Next lists Ukrainian but has no free hosted endpoint. DeepSeek V4 Flash is end of life (410).
 - Hosted model ids churn: DeepSeek V4 Flash disappeared within months. The chat model is a setting; the Settings dialog should show the error text from the API so a 410 is understood.
-- `nemotron-parse-2.0` hosted context is 4096 tokens; `max_tokens` above that is rejected with 400. Its hosted endpoint returned 502 upstream on 2026-10-28, so the default is `nemotron-parse` (v1), which answers as a `markdown_bbox` tool call.
 - Provider limit is 40 requests per minute for all models together. The throttle is global per process; two app instances would share nothing and could exceed it.
 - PyMuPDF 2.0 depends on `pymupdf-layout` and `onnxruntime` and activates the layout model at import. The bundle excludes them; `import pymupdf.layout` then raises ImportError, which PyMuPDF catches. Verified: text PDF parses in the frozen app.
 - sqlite-vec has no PyInstaller hook; `collect_dynamic_libs("sqlite_vec")` ships `vec0` next to the package so `sqlite_vec.load` finds it.
 - PyInstaller only sees static imports; `importlib.import_module("webview")` needs `hiddenimports`.
 - The Windows bundle is windowed (no console); `sys.stdout` is None there, so the launcher must not print.
 - Windows bundle smoke test is only verified in CI; the local build check ran on macOS.
-- Remote has `master`, CLAUDE.md says `main`. Branches are created from `origin/master` until the default branch is renamed.
+- Remote default branch is `master`. Each phase branch was cut from the previous phase branch, because `master` holds only the initial commit until the phases are merged.
 
 ## Sources
 
@@ -240,7 +239,7 @@ Local models, translation layer, images in answers, document editing, multi-user
 - https://beluga-ai.org/docs/guides/capabilities/rag/cross-lingual-retrieval/ — cross-lingual similarity search without translation
 - https://arxiv.org/html/2504.03616v1 — multilingual RAG strategies, translation vs direct multilingual retrieval
 - https://pypi.org/project/sqlite-vec/ — 0.1.9 wheels incl. win_amd64
-- https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct — Qwen3-Next model card (default chat model)
+- https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct — Qwen3-Next model card (candidate; no free endpoint)
 - https://arxiv.org/html/2505.09388v1 — Qwen3 technical report: 119 languages incl. ukr_Cyrl and rus_Cyrl, Russian benchmark table
 - https://qwenlm.github.io/blog/qwen3/ — Qwen3 language table lists Ukrainian and Russian
 - https://arxiv.org/html/2605.10296 — UNLP 2026 Ukrainian document RAG: Qwen3 embed/rerank/generator pipeline
@@ -250,7 +249,7 @@ Local models, translation layer, images in answers, document editing, multi-user
 - https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-Base-BF16 — Super base card (adds Russian)
 - https://huggingface.co/zai-org/GLM-5.3-Flash — GLM-5.3-Flash card (no language list)
 - https://ai-llm-leaderboard.com/leaderboards/ukrainian — community Ukrainian ranking (DeepSeek V4 top)
-- https://docs.api.nvidia.com/nim/reference/deepseek-ai-deepseek-v4-flash-infer — `reasoning_effort` none/high/max, max_tokens 16384, SSE
+- https://docs.api.nvidia.com/nim/reference/deepseek-ai-deepseek-v4-flash-infer — `reasoning_effort` none/high/max, max_tokens 16384, SSE (model is 410 since 2026-08-07)
 - https://developer.nvidia.com/blog/build-with-deepseek-v4-using-nvidia-blackwell-and-gpu-accelerated-endpoints/ — DeepSeek V4 hosted on build.nvidia.com
 - https://docs.api.nvidia.com/nim/reference/nvidia-llama-3_2-nv-embedqa-1b-v2-infer — `input_type` warning
 - https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3_5-rerank-8b-infer — rerank endpoint and body
@@ -267,3 +266,6 @@ Local models, translation layer, images in answers, document editing, multi-user
 - https://pywebview.flowrl.com/guide/freezing.html — PyInstaller / py2app
 - https://parsebridge.com/blog/pymupdf-license/ — PyMuPDF AGPL
 - https://www.nutrient.io/blog/extract-text-from-pdf-pymupdf/ — scanned PDF detection with PyMuPDF
+- https://pyinstaller.org/en/stable/spec-files.html — spec file: datas, binaries, hiddenimports, excludes, macOS BUNDLE
+- https://github.com/pyinstaller/pyinstaller-hooks-contrib — community hooks exist for pymupdf, uvicorn, webview, pydantic; none for sqlite_vec
+- https://deepwiki.com/git-liu835/codex-cn-bridge/4.1-backend-build-and-pyinstaller-packaging — FastAPI + uvicorn PyInstaller build example
