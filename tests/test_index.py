@@ -117,3 +117,45 @@ def test_store_file_uses_given_name(conn, tmp_path):
     src.write_text("x")
     doc_id = index.store_file(conn, ws, src, dest_root=tmp_path / "files", name="Real.txt")
     assert db.get_document(conn, doc_id)["name"] == "Real.txt"
+
+
+def test_store_file_records_sha256(conn, tmp_path):
+    import hashlib
+    doc_id = _stored(conn, tmp_path, "some bytes")
+    assert db.get_document(conn, doc_id)["sha256"] == hashlib.sha256(b"some bytes").hexdigest()
+
+
+def test_index_stops_when_document_is_deleted_during_indexing(conn, tmp_path):
+    from localrag import nvidia
+    doc_id = _stored(conn, tmp_path, "\n\n".join(f"{i:03d}" + "x" * 400 for i in range(150)))
+    calls = []
+
+    def fake_embed(cfg, texts, input_type):
+        calls.append(texts)
+        db.delete_document(conn, doc_id)
+        return [[0.0] * 4 for _ in texts]
+
+    with pytest.raises(index.Cancelled):
+        index.index_document(conn, {}, doc_id, embed=fake_embed, parse_page=None)
+    assert len(calls) == 1 and len(calls[0]) <= nvidia.EMBED_BATCH
+    assert _count(conn, "chunks") == 0
+
+
+def test_index_cancelled_before_parse_of_each_scanned_page(conn, tmp_path):
+    import pymupdf
+    pdf = pymupdf.open()
+    for _ in range(2):
+        pdf.new_page().draw_rect(pymupdf.Rect(50, 50, 200, 200), color=(0, 0, 0), fill=(0, 0, 0))
+    src = tmp_path / "s.pdf"
+    pdf.save(src)
+    doc_id = index.store_file(conn, db.create_workspace(conn, "w"), src, dest_root=tmp_path / "files")
+    calls = []
+
+    def fake_parse(cfg, png):
+        calls.append(1)
+        db.delete_document(conn, doc_id)
+        return "OCR"
+
+    with pytest.raises(index.Cancelled):
+        index.index_document(conn, {}, doc_id, embed=None, parse_page=fake_parse)
+    assert len(calls) == 1

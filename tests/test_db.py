@@ -66,3 +66,25 @@ def test_connection_usable_from_another_thread(tmp_path):
     t.start()
     t.join()
     assert "e" not in out and out["r"] == (1,)
+
+
+def test_schema_adds_sha256_column_to_existing_db(tmp_path):
+    p = tmp_path / "old.db"
+    old = sqlite3.connect(p)
+    old.execute("CREATE TABLE documents(id INTEGER PRIMARY KEY, workspace_id INTEGER NOT NULL, "
+                "name TEXT NOT NULL, path TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', "
+                "pages INTEGER, error TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+    old.commit()
+    old.close()
+    conn = connect(p)
+    assert "sha256" in [r[1] for r in conn.execute("PRAGMA table_info(documents)")]
+
+
+def test_find_document_by_sha256(tmp_path):
+    from localrag import db
+    conn = connect(tmp_path / "t.db")
+    w1, w2 = db.create_workspace(conn, "a"), db.create_workspace(conn, "b")
+    d = db.create_document(conn, w1, "a.txt", "", sha256="abc")
+    assert db.find_document(conn, w1, "abc")["id"] == d
+    assert db.find_document(conn, w2, "abc") is None
+    assert db.find_document(conn, w1, "zzz") is None

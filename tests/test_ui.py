@@ -216,7 +216,7 @@ def test_chat_tab_takes_title_from_first_question(page, server):
     expect(page.locator("#sessions .tab.active .tab-title")).to_have_text("What is the capital?")
 
 
-def test_new_chat_pen_button_adds_tab(page, server):
+def test_new_chat_plus_button_adds_tab(page, server):
     new_ws(page, server)
     expect(page.locator("#sessions .tab")).to_have_count(1)
     b = page.locator("#session-new")
@@ -257,7 +257,7 @@ def test_workspace_menu_rename(page, server):
     pop = page.locator("#ws-popover")
     expect(pop).to_be_visible()
     expect(pop.locator("[data-action=rename]")).to_have_text("Rename")
-    expect(pop.locator("[data-action=remove]")).to_have_text("Remove")
+    expect(pop.locator("[data-action=delete]")).to_have_text("Delete")
     pop.locator("[data-action=rename]").click()
     expect(page.locator("#ws-dialog-title")).to_have_text("Rename workspace")
     expect(page.locator("#ws-name")).to_have_value(name)
@@ -280,23 +280,105 @@ def test_workspace_menu_does_not_select_and_popover_closes(page, server):
     expect(page.locator("#ws-popover")).to_be_hidden()
 
 
-def test_workspace_menu_remove_confirms_then_deletes(page, server):
+def test_workspace_menu_delete_confirms_then_deletes(page, server):
     for w in httpx.get(f"{server}/workspaces").json():
         httpx.delete(f"{server}/workspaces/{w['id']}")
     name = new_ws(page, server)
     li = page.locator("#workspaces li", has_text=name)
-    def open_remove():
+    def open_delete():
         li.locator("button.ws-menu").click()
-        page.click("#ws-popover [data-action=remove]")
-        expect(page.locator("#ws-remove-dialog")).to_be_visible()
-        expect(page.locator("#ws-remove-dialog")).to_contain_text(name)
-    open_remove()
-    expect(page.locator("#ws-remove-ok")).to_have_text("Remove")
-    page.click("#ws-remove-cancel")
-    expect(page.locator("#ws-remove-dialog")).not_to_be_visible()
+        page.click("#ws-popover [data-action=delete]")
+        expect(page.locator("#ws-delete-dialog")).to_be_visible()
+        expect(page.locator("#ws-delete-dialog")).to_contain_text(name)
+    open_delete()
+    expect(page.locator("#ws-delete-ok")).to_have_text("Delete")
+    page.click("#ws-delete-cancel")
+    expect(page.locator("#ws-delete-dialog")).not_to_be_visible()
     expect(li).to_have_count(1)
-    open_remove()
-    page.click("#ws-remove-ok")
+    open_delete()
+    page.click("#ws-delete-ok")
     expect(li).to_have_count(0)
     expect(page.locator("#ws-empty")).to_be_visible()
     assert httpx.get(f"{server}/workspaces").json() == []
+
+
+def test_status_dot_has_tooltip_and_pulses_while_indexing(page, server):
+    import json
+    docs = [{"id": 1, "name": "p.txt", "status": "pending", "error": None},
+            {"id": 2, "name": "i.txt", "status": "indexed", "error": None},
+            {"id": 3, "name": "f.txt", "status": "failed", "error": "boom"}]
+    new_ws(page, server)
+    page.route("**/workspaces/*/documents", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=json.dumps(docs)))
+    page.reload()
+    page.locator("#workspaces li").last.click()
+    rows = {d["status"]: page.locator(f"#documents li[data-status={d['status']}]") for d in docs}
+    expect(rows["pending"]).to_have_attribute("title", "Indexing")
+    expect(rows["indexed"]).to_have_attribute("title", "Indexed")
+    expect(rows["failed"]).to_have_attribute("title", "boom")
+    # one evaluate: the pending poll re-renders the list between separate calls
+    got = page.evaluate("""() => ['pending', 'indexed'].map(k => {
+        const e = document.querySelector(`#documents li[data-status=${k}] .status`);
+        return [getComputedStyle(e, '::before').animationName, e.getBoundingClientRect().width]; })""")
+    assert got[0][0] == "pulse" and got[1][0] == "none"
+    assert got[0][1] <= 1 and got[1][1] <= 1
+
+
+def test_document_count_shown_in_heading(page, server):
+    new_ws(page, server)
+    page.set_input_files("#upload", [{"name": n, "mimeType": "text/plain", "buffer": n.encode()}
+                                     for n in ("a.txt", "b.txt")])
+    page.click("#upload-btn")
+    expect(page.locator("#doc-count")).to_have_text("2")
+
+
+def test_document_filter_hides_non_matching_rows(page, server):
+    new_ws(page, server)
+    page.set_input_files("#upload", [{"name": n, "mimeType": "text/plain", "buffer": n.encode()}
+                                     for n in ("Kyiv-notes.txt", "lviv.txt")])
+    page.click("#upload-btn")
+    expect(page.locator("#documents li")).to_have_count(2)
+    b = page.locator("#doc-filter-btn")
+    expect(b).to_have_attribute("aria-label", "Filter documents")
+    expect(b.locator("svg")).to_have_count(1)
+    b.click()
+    f = page.locator("#doc-filter")
+    expect(f).to_be_visible()
+    expect(f).to_be_focused()
+    expect(f).to_have_attribute("placeholder", "Filter documents")
+    f.fill("kyiv")
+    expect(page.locator("#documents li", has_text="Kyiv-notes.txt")).to_be_visible()
+    lviv = page.locator("#documents li", has_text="lviv.txt")
+    expect(lviv).to_have_class("hidden")
+    expect(lviv).to_be_hidden()
+    f.fill("")
+    expect(page.locator("#documents li:visible")).to_have_count(2)
+
+
+def test_document_list_scrolls_and_footer_stays_visible_with_many_documents(page, server):
+    new_ws(page, server)
+    w = ws_id(page)
+    for i in range(1, 61):
+        httpx.post(f"{server}/workspaces/{w}/documents",
+                   files=[("files", (f"doc-{i:02d}.txt", f"text {i}".encode(), "text/plain"))])
+    page.reload()
+    page.locator(f"#workspaces li[data-id='{w}']").click()
+    expect(page.locator("#documents li")).to_have_count(60)
+    assert page.locator("#documents").evaluate("e => e.scrollHeight > e.clientHeight")
+    expect(page.locator("#settings-btn")).to_be_in_viewport()
+
+
+def test_workspace_menu_items_have_pen_and_trash_icons(page, server):
+    new_ws(page, server)
+    page.locator("#workspaces li.selected button.ws-menu").click()
+    for action, text in (("rename", "Rename"), ("delete", "Delete")):
+        b = page.locator(f"#ws-popover button[data-action={action}]")
+        expect(b.locator("svg")).to_have_count(1)
+        expect(b).to_have_text(text)
+
+
+def test_settings_button_is_a_gear(page, server):
+    page.goto(server)
+    expect(page.locator("#settings-btn svg")).to_have_attribute("data-icon", "gear")
+    expect(page.locator("#session-new svg")).to_have_attribute("data-icon", "plus")
+    expect(page.locator("#ws-add svg")).to_have_attribute("data-icon", "plus")

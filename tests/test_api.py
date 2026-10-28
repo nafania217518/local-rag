@@ -222,3 +222,18 @@ def test_delete_session_route(client):
     assert client.delete(f"/sessions/{s}").status_code == 204
     assert client.get(f"/sessions/{s}/messages").status_code == 404
     assert client.delete(f"/sessions/{s}").status_code == 404
+
+
+def test_upload_same_file_twice_is_skipped(tmp_path):
+    runs = []
+    client = make(tmp_path, run_in_background=lambda fn: (runs.append(fn), fn()))
+    w = ws(client)
+    first = upload(client, w, ("a.txt", "same")).json()[0]
+    second = upload(client, w, ("a.txt", "same")).json()[0]
+    assert second["id"] == first["id"]
+    assert len(client.get(f"/workspaces/{w}/documents").json()) == 1
+    assert len(runs) == 1
+    assert list((tmp_path / "files" / "incoming").iterdir()) == []
+    w2 = ws(client, "other")
+    assert upload(client, w2, ("a.txt", "same")).json()[0]["id"] != first["id"]
+    assert len(runs) == 2

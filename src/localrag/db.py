@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS workspaces(id INTEGER PRIMARY KEY, name TEXT NOT NULL
 CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY,
     workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     name TEXT NOT NULL, path TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
-    pages INTEGER, error TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+    pages INTEGER, error TEXT, sha256 TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS chunks(id INTEGER PRIMARY KEY,
     document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     workspace_id INTEGER NOT NULL, ord INTEGER NOT NULL, page INTEGER NOT NULL, text TEXT NOT NULL);
@@ -53,6 +53,8 @@ def connect(path: str | os.PathLike, embed_dim: int = config.EMBED_DIM) -> sqlit
 
 def init_schema(conn, embed_dim):
     conn.executescript(SCHEMA.replace("{dim}", str(int(embed_dim))))
+    if "sha256" not in [r[1] for r in conn.execute("PRAGMA table_info(documents)")]:
+        conn.execute("ALTER TABLE documents ADD COLUMN sha256 TEXT")
 
 
 def _insert(conn, sql, params):
@@ -74,9 +76,14 @@ def delete_workspace(conn, workspace_id):
         conn.execute("DELETE FROM workspaces WHERE id = ?", [workspace_id])
 
 
-def create_document(conn, workspace_id, name, path):
-    return _insert(conn, "INSERT INTO documents(workspace_id, name, path) VALUES (?, ?, ?)",
-                   [workspace_id, name, path])
+def create_document(conn, workspace_id, name, path, sha256=None):
+    return _insert(conn, "INSERT INTO documents(workspace_id, name, path, sha256) VALUES (?, ?, ?, ?)",
+                   [workspace_id, name, path, sha256])
+
+
+def find_document(conn, workspace_id, sha256):
+    return conn.execute("SELECT * FROM documents WHERE workspace_id = ? AND sha256 = ?",
+                        [workspace_id, sha256]).fetchone()
 
 
 def list_documents(conn, workspace_id):

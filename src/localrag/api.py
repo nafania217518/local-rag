@@ -108,16 +108,20 @@ def create_app(db_path, cfg_path, files_root, *, embed=nvidia.embed, rerank=nvid
         _found(db.get_workspace(conn, ws))
         incoming = files_root / "incoming"
         incoming.mkdir(parents=True, exist_ok=True)
-        ids = []
+        ids, new = [], []
         for f in files:
             tmp = incoming / f"{uuid.uuid4().hex}{Path(f.filename).suffix}"
             with tmp.open("wb") as out:
                 shutil.copyfileobj(f.file, out)
-            doc_id = index.store_file(conn, ws, tmp, files_root, name=f.filename)
+            dup = db.find_document(conn, ws, index.file_sha256(tmp))
+            if dup:
+                ids.append(dup["id"])
+            else:
+                new.append(index.store_file(conn, ws, tmp, files_root, name=f.filename))
+                ids.append(new[-1])
             tmp.unlink()
-            ids.append(doc_id)
         rows = [dict(db.get_document(conn, i)) for i in ids]
-        for i in ids:
+        for i in new:
             index_in_background(i)
         return rows
 
