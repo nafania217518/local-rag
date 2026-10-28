@@ -88,3 +88,38 @@ def test_find_document_by_sha256(tmp_path):
     assert db.find_document(conn, w1, "abc")["id"] == d
     assert db.find_document(conn, w2, "abc") is None
     assert db.find_document(conn, w1, "zzz") is None
+
+
+def test_schema_adds_progress_columns_to_existing_db(tmp_path):
+    p = tmp_path / "old.db"
+    old = sqlite3.connect(p)
+    old.execute("CREATE TABLE documents(id INTEGER PRIMARY KEY, workspace_id INTEGER, name TEXT, "
+                "path TEXT, status TEXT, pages INTEGER, error TEXT, sha256 TEXT, created_at TEXT)")
+    old.commit()
+    old.close()
+    conn = connect(p, embed_dim=4)
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(documents)")]
+    assert "pages_done" in cols and "ocr_pages" in cols
+
+
+def test_set_document_progress(tmp_path):
+    from localrag import db
+    conn = connect(tmp_path / "t.db", embed_dim=4)
+    d = db.create_document(conn, db.create_workspace(conn, "w"), "a", "p")
+    db.set_document_progress(conn, d, 1, pages=3)
+    assert (db.get_document(conn, d)["pages_done"], db.get_document(conn, d)["pages"]) == (1, 3)
+    db.set_document_progress(conn, d, 2)
+    assert (db.get_document(conn, d)["pages_done"], db.get_document(conn, d)["pages"]) == (2, 3)
+
+
+def test_delete_chunks_removes_fts_and_vec_rows(tmp_path):
+    from localrag import db
+    conn = connect(tmp_path / "t.db", embed_dim=4)
+    ws = db.create_workspace(conn, "w")
+    d = db.create_document(conn, ws, "a", "p")
+    db.add_chunks(conn, d, ws, [(0, 1, "uniqueword here", [1, 0, 0, 0])])
+    db.delete_chunks(conn, d)
+    assert conn.execute("SELECT count(*) FROM chunks").fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM chunks_fts WHERE chunks_fts MATCH ?", ["uniqueword"]).fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM chunks_vec").fetchone()[0] == 0
+    assert db.get_document(conn, d) is not None

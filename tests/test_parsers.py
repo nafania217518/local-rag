@@ -166,7 +166,7 @@ def test_on_page_reports_progress_and_ocr_flag(tmp_path):
     p = _pdf(tmp_path / "o.pdf", ["Hello text page with enough chars", None])
     calls = []
     parsers.parse_pdf(p, {}, FakeParse(), on_page=lambda *a: calls.append(a))
-    assert calls == [(1, 2, False), (2, 2, True)]
+    assert calls == [(0, 2, False), (1, 2, False), (2, 2, True)]
 
 
 def test_parse_file_forwards_keyword_arguments(tmp_path):
@@ -176,3 +176,10 @@ def test_parse_file_forwards_keyword_arguments(tmp_path):
     t = tmp_path / "k.txt"
     t.write_text("plain text")
     assert parsers.parse_file(t, {}, fake, force_ocr=True, on_page=print) == [(1, "plain text")]
+
+
+def test_on_page_is_called_with_zero_before_the_first_page(tmp_path):
+    p = _pdf(tmp_path / "z.pdf", ["Hello text page with enough chars", None])
+    calls = []
+    parsers.parse_pdf(p, on_page=lambda *a: calls.append(a))
+    assert calls[0] == (0, 2, False)

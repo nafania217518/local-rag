@@ -80,11 +80,19 @@ def store_file(conn, workspace_id, src_path, dest_root=None, name=None):
     return doc_id
 
 
-def index_document(conn, cfg, document_id, *, embed=nvidia.embed, parse_page=nvidia.parse_page):
+def index_document(conn, cfg, document_id, *, embed=nvidia.embed, parse_page=nvidia.parse_page,
+                   force_ocr=False):
     try:
         doc = db.get_document(conn, document_id)
         checked_parse = parse_page and (lambda c, png: (_check(conn, document_id), parse_page(c, png))[1])
-        pages = parse_file(doc["path"], cfg, checked_parse)
+        ocr, totals = [], []
+
+        def on_page(done, total, via_ocr):
+            ocr.append(via_ocr)
+            totals.append(total)
+            db.set_document_progress(conn, document_id, done, pages=total)
+
+        pages = parse_file(doc["path"], cfg, checked_parse, force_ocr=force_ocr, on_page=on_page)
         chunks = chunk_pages(pages)
         if chunks:
             texts = [t for _, _, t in chunks]
@@ -95,7 +103,14 @@ def index_document(conn, cfg, document_id, *, embed=nvidia.embed, parse_page=nvi
             _check(conn, document_id)
             db.add_chunks(conn, document_id, doc["workspace_id"],
                           [(o, p, t, v) for (o, p, t), v in zip(chunks, vectors)])
-        db.set_document_status(conn, document_id, "indexed", pages=len(pages))
+        db.set_document_status(conn, document_id, "indexed", pages=totals[-1] if totals else len(pages), ocr_pages=sum(ocr))
     except Exception as exc:
         db.set_document_status(conn, document_id, "failed", error=str(exc))
         raise
+
+
+def reindex(conn, cfg, document_id, *, force_ocr=False, **kw):
+    db.delete_chunks(conn, document_id)
+    db.set_document_status(conn, document_id, "pending")
+    db.set_document_progress(conn, document_id, 0)
+    index_document(conn, cfg, document_id, force_ocr=force_ocr, **kw)

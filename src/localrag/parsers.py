@@ -49,6 +49,8 @@ def _needs_ocr(page, text, force_ocr):
 def parse_pdf(path, cfg=None, parse_page=None, *, force_ocr=False, on_page=None):
     pages = []
     with pymupdf.open(path) as doc:
+        if on_page:
+            on_page(0, len(doc), False)
         for n, page in enumerate(doc, 1):
             text = page.get_text()
             via_ocr = bool(parse_page) and _needs_ocr(page, text, force_ocr)

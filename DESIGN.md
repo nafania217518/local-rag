@@ -239,13 +239,14 @@ Page routing, in `parsers.py`:
 1. `is_scanned(page)`: a page is a scan when one image covers at least half of the page area (`page.get_image_info()` bboxes). Digital pages are never sent to OCR unless forced; a logo-only cover page with little text is still treated as text.
 2. `text_quality(text) -> float` in `[0, 1]`: runs of three or more dots are removed first (table-of-contents leaders are not garbage), then the share of good tokens among whitespace tokens of two or more characters, with these rmgarbage-style rules marking a token bad: longer than 40 characters; four or more identical characters in a row; fewer than half of its characters alphanumeric; Cyrillic and Latin letters mixed in one token. If more than 30 % of the tokens are single letters (character-separated text), the score is capped at 0.5. Pages with fewer than 5 tokens score 1.0 and are decided by the 20-character rule as now.
 3. A page goes to OCR when its text has fewer than 20 characters (any page, as now), or when it is scanned and `text_quality < OCR_QUALITY_MIN` (constant, 0.8). `# ponytail: fixed threshold, calibrate on real scans; a setting only if users ask`.
-4. `parse_pdf(path, cfg, parse_page, *, force_ocr=False, on_page=None)`; `on_page(done, total, via_ocr)` is called after every page.
+4. `parse_pdf(path, cfg, parse_page, *, force_ocr=False, on_page=None)`; `on_page(done, total, via_ocr)` is called once with `done = 0` before the first page (so the total is known before a slow first OCR call) and then after every page.
 
 Limits of the heuristic, stated up front: it catches mojibake, symbol soup, mixed scripts and character-separated text. It cannot catch a wrong but well-formed word (`ДОКУМЕНТІГ`) without a dictionary; that is what the manual force mode is for.
 
 Progress and record, in `db.py` and `index.py`:
 - `documents` gets `pages_done INTEGER` and `ocr_pages INTEGER` (added by `ALTER TABLE` on existing databases, same pattern as `sha256`). `pages` is set to the total at the start of parsing, not at the end.
-- `index_document(..., force_ocr=False)` passes `on_page` that writes `pages_done` and counts OCR'd pages; the existing cancel check runs before every OCR call. At the end `ocr_pages` is stored.
+- `index_document(..., force_ocr=False)` passes `on_page` that writes `pages_done` and counts OCR'd pages; the existing cancel check runs before every OCR call. At the end `ocr_pages` is stored. The final `pages` is the total page count for PDFs (DOCX and TXT have one page), so `pages_done` never exceeds `pages`.
+- `index.reindex(conn, cfg, document_id, force_ocr=True, ...)`: `delete_chunks`, status `pending`, `pages_done` 0, then `index_document`.
 - Manual run: `db.delete_chunks(conn, document_id)` (chunks, FTS rows and vec rows), status back to `pending`, `pages_done` 0, then `index_document(force_ocr=True)` in the background.
 
 API, in `api.py`: `POST /workspaces/{ws}/documents/{id}/ocr` → 202 with the document row; 404 for unknown; 409 while the document is `pending`. `GET .../documents` already returns the new columns.
