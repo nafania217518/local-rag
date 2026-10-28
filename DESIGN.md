@@ -34,6 +34,8 @@ All calls use one API key (`NVIDIA_API_KEY`) as a Bearer token.
 
 Why parse instead of the OCR NIM: the hosted `nemoretriever-ocr-v1` endpoint is deprecated, and `nemotron-ocr-v2` returns word boxes, not reading-order text. `nemotron-parse-2.0` runs through the same chat endpoint and returns page Markdown. One client, one auth path.
 
+Rate limit: build.nvidia.com allows 40 requests per minute in total, across all models. `nvidia.py` enforces one global sliding-window throttle (`RPM = 40`, thread-safe) that every outgoing request passes through, and retries 429 and 5xx responses with exponential backoff (1, 2, 4, 8 s, or the `Retry-After` header), at most 5 attempts. The SDK's own retries are off. Consequence for ingestion: a scanned 30-page PDF costs about 31 requests (30 parse calls plus one embed batch), so about one such document per minute. The UI shows per-document status so this is visible, not silent.
+
 The OpenAI Python SDK handles chat, embeddings and parse (`base_url="https://integrate.api.nvidia.com/v1"`, `extra_body={"input_type": ...}` for embeddings). Rerank is one `httpx.post`.
 
 Why 8b and not 1b for embeddings: the 1b model is a distillation of the 8b model. On ViDoRe V3 text retrieval the 8b scores 60.65 nDCG@10 against 57.80 for the 1b. Both run on the same hosted endpoint, so the only local cost is vector size (4096 vs 2048 floats). For 100 documents that is about 160 MB on disk. Accuracy wins.
@@ -210,6 +212,7 @@ Local models, translation layer, images in answers, document editing, multi-user
 - pywebview on Windows needs the WebView2 Runtime (present on current Windows 10/11; the installer must check).
 - pywebview docs suggest py2app on macOS; PyInstaller also works and is the single tool used here.
 - No Nemotron chat model on the catalog lists Ukrainian in its hosted model card. Qwen3-Next does, but has no free hosted endpoint. DeepSeek V4 Flash is free and is the default.
+- Provider limit is 40 requests per minute for all models together. The throttle is global per process; two app instances would share nothing and could exceed it.
 - DeepSeek V4 Flash thinks by default (`reasoning_effort: high`). The app sends `none` unless the user changes the setting.
 - Remote has `master`, CLAUDE.md says `main`. Branches are created from `origin/master` until the default branch is renamed.
 

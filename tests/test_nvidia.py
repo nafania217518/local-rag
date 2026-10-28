@@ -154,3 +154,117 @@ def test_chat_stream_skips_chunks_without_choices():
     respx.post(CHAT_URL).mock(return_value=httpx.Response(
         200, headers={"content-type": "text/event-stream"}, text=body))
     assert list(nvidia.chat_stream(cfg, [])) == [("token", "Hi")]
+
+
+# --- rate limiting -----------------------------------------------------------
+
+import threading
+
+
+@pytest.fixture(autouse=True)
+def fake_time(monkeypatch):
+    nvidia._reset_throttle()
+    clock = {"t": 0.0}
+    sleeps = []
+
+    def sleep(s):
+        sleeps.append(s)
+        clock["t"] += s
+
+    monkeypatch.setattr(nvidia, "_sleep", sleep)
+    monkeypatch.setattr(nvidia, "_now", lambda: clock["t"])
+    return clock, sleeps
+
+
+def test_throttle_allows_rpm_requests_without_sleeping(fake_time):
+    _, sleeps = fake_time
+    for _ in range(nvidia.RPM):
+        nvidia._throttle()
+    assert sleeps == []
+
+
+def test_throttle_sleeps_until_window_frees(fake_time):
+    clock, sleeps = fake_time
+    for _ in range(nvidia.RPM):
+        nvidia._throttle()
+    clock["t"] = 10.0
+    nvidia._throttle()
+    assert sleeps == [pytest.approx(50)]
+    clock["t"] = 200.0
+    nvidia._throttle()
+    assert len(sleeps) == 1
+
+
+def test_throttle_is_thread_safe(fake_time):
+    _, sleeps = fake_time
+    threads = [threading.Thread(target=lambda: [nvidia._throttle() for _ in range(4)]) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(nvidia._window) == 40
+    assert sleeps == []
+
+
+@respx.mock
+def test_retry_on_429_honors_retry_after(fake_time):
+    _, sleeps = fake_time
+    limited = httpx.Response(429, headers={"Retry-After": "3"}, json={})
+    route = respx.post(EMBED_URL).mock(side_effect=[
+        limited, limited, httpx.Response(200, json=embed_resp([[1.0]]))])
+    assert nvidia.embed(cfg, ["a"], "query") == [[1.0]]
+    assert route.call_count == 3
+    assert sleeps == [3, 3]
+
+
+@respx.mock
+def test_retry_exponential_backoff_on_5xx(fake_time):
+    _, sleeps = fake_time
+    down = httpx.Response(503, json={})
+    respx.post(RERANK).mock(side_effect=[down, down, down, httpx.Response(200, json={"rankings": [
+        {"index": 0, "logit": 1.0}]})])
+    assert nvidia.rerank(cfg, "q", ["a"]) == [(0, 1.0)]
+    assert sleeps == [1, 2, 4]
+
+
+@respx.mock
+def test_retry_gives_up_after_max_attempts(fake_time):
+    route = respx.post(EMBED_URL).mock(return_value=httpx.Response(429, json={}))
+    with pytest.raises(openai.APIStatusError):
+        nvidia.embed(cfg, ["a"], "query")
+    assert route.call_count == nvidia.MAX_ATTEMPTS
+
+
+@respx.mock
+def test_no_retry_on_other_4xx(fake_time):
+    _, sleeps = fake_time
+    route = respx.post(EMBED_URL).mock(return_value=httpx.Response(401, json={}))
+    with pytest.raises(openai.APIStatusError):
+        nvidia.embed(cfg, ["a"], "query")
+    assert route.call_count == 1
+    assert sleeps == []
+
+
+@respx.mock
+def test_chat_stream_retries_on_429_before_streaming(fake_time):
+    route = respx.post(CHAT_URL).mock(side_effect=[httpx.Response(429, json={}), sse({"content": "Hi"})])
+    assert list(nvidia.chat_stream(cfg, [])) == [("token", "Hi")]
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_every_client_call_passes_through_throttle(monkeypatch):
+    calls = []
+    monkeypatch.setattr(nvidia, "_throttle", lambda: calls.append(1))
+    respx.post(EMBED_URL).mock(return_value=httpx.Response(200, json=embed_resp([[1.0]])))
+    respx.post(RERANK).mock(return_value=httpx.Response(200, json={"rankings": []}))
+    respx.post(CHAT_URL).mock(side_effect=[
+        httpx.Response(200, json={"id": "x", "object": "chat.completion", "created": 0, "model": "m",
+                                  "choices": [{"index": 0, "message": {"role": "assistant", "content": "p"},
+                                               "finish_reason": "stop"}]}),
+        sse({"content": "x"})])
+    nvidia.embed(cfg, ["a"], "query")
+    nvidia.rerank(cfg, "q", ["a"])
+    nvidia.parse_page(cfg, b"png")
+    list(nvidia.chat_stream(cfg, []))
+    assert len(calls) == 4

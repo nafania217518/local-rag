@@ -32,3 +32,4 @@
 - macOS system Python is 3.9 and blocks SQLite extensions (sqlite-vec needs them); use uv Python 3.12+ : DESIGN.md
 - Windows needs WebView2 Runtime for pywebview : DESIGN.md
 - Remote default branch is master, not main : DESIGN.md
+- build.nvidia.com free tier is 40 requests/min across all models; every call goes through the throttle in nvidia.py : DESIGN.md
