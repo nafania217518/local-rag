@@ -45,9 +45,9 @@ class FakeWebview:
         self.started = True
 
 
-def run_main(ready):
+def run_main(ready, argv=None):
     server, wv = types.SimpleNamespace(should_exit=False), FakeWebview()
-    code = app.main(make_app=lambda: "app", serve=lambda a, p: server,
+    code = app.main(argv, make_app=lambda: "app", serve=lambda a, p: server,
                     wait_ready=lambda url: ready, webview=wv)
     return code, server, wv
 
@@ -70,3 +70,25 @@ def test_make_app_creates_data_dir_and_serves_health(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     assert TestClient(app.make_app()).get("/health").status_code == 200
     assert (tmp_path / "data" / "localrag.db").exists()
+
+
+def test_main_serve_flag_runs_server_in_foreground_without_window():
+    calls, wv = [], FakeWebview()
+    code = app.main(["--serve", "8123"], make_app=lambda: "app", webview=wv,
+                    run=lambda a, p: calls.append((a, p)))
+    assert code == 0 and calls == [("app", 8123)] and wv.window is None
+
+
+def test_main_without_args_reads_sys_argv(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["localrag"])
+    code, server, wv = run_main(True)
+    assert code == 0 and wv.started
+
+
+def test_run_server_serves_health(tmp_path):
+    import threading
+    port = app.free_port()
+    threading.Thread(target=app.run_server, args=(make_real_app(tmp_path), port), daemon=True).start()
+    url = f"http://127.0.0.1:{port}"
+    assert app.wait_ready(url)
+    assert httpx.get(f"{url}/health").status_code == 200

@@ -71,6 +71,8 @@ pywebview window  ──HTTP/SSE──▶  FastAPI (uvicorn, background thread, 
 
 Package: `src/localrag/`. UI: `src/localrag/static/index.html` (vanilla HTML/CSS/JS, no build step). Launcher: `src/localrag/app.py` picks a free localhost port, starts uvicorn in a daemon thread, waits for `/health`, then `webview.create_window(url)` and `webview.start()`; closing the window stops the server. Every blocking collaborator is injectable so the launcher has unit tests without a window.
 
+Packaging: `localrag.spec` at the repo root, one-folder PyInstaller build (`uv run pyinstaller localrag.spec`). Output: `dist/LocalRAG/` on both OS plus `dist/LocalRAG.app` on macOS (about 95 MB). The spec collects `static/`, the sqlite-vec `vec0` library (no community hook), names `webview` as a hidden import (app.py loads it through importlib), and excludes the optional PyMuPDF layout stack (`pymupdf.layout`, onnxruntime, numpy, networkx, psutil; about 170 MB and its ONNX resources are not collected). `LocalRAG --serve <port>` runs the server without a window; the CI `build` job uses it to probe `/health` on the real bundle on macOS and Windows and uploads `dist/` as an artifact. The bundle is not code-signed; macOS Gatekeeper and Windows SmartScreen will warn.
+
 ### 4.1 Storage (local)
 
 One SQLite file: `<app data>/localrag.db`. Uploaded files are copied to `<app data>/files/<workspace_id>/<document_id>.<ext>`.
@@ -193,7 +195,7 @@ Each phase: requirements → tests → code, by an Opus sub-agent (low effort). 
 | 5 | Chat | `chat.py` | prompt contains numbered context, history limited to 10, SSE order token→citations→done, `reasoning_content` deltas become `thinking` events, `reasoning_effort` passed from settings, message persisted with citations |
 | 6 | API | `api.py` | one test per route, upload of many files, SSE end-to-end with fakes |
 | 7 | UI + launcher | `static/index.html`, `app.py` | Playwright: create workspace, upload, see status, ask, see streamed answer and sources, open settings |
-| 8 | Packaging | PyInstaller specs, CI artifacts | bundle starts and answers `/health` on both OS |
+| 8 | Packaging | `localrag.spec`, `--serve` flag, CI `build` job with artifacts | `test_spec_*`, `test_main_serve_flag_*`, CI smoke `/health` on the bundle on both OS |
 
 Phase order is strict 0→6. Phase 7 and 8 can run in parallel after 6.
 
@@ -215,6 +217,11 @@ Local models, translation layer, images in answers, document editing, multi-user
 - Hosted model ids churn: DeepSeek V4 Flash disappeared within months. The chat model is a setting; the Settings dialog should show the error text from the API so a 410 is understood.
 - `nemotron-parse-2.0` hosted context is 4096 tokens; `max_tokens` above that is rejected with 400. Its hosted endpoint returned 502 upstream on 2026-10-28, so the default is `nemotron-parse` (v1), which answers as a `markdown_bbox` tool call.
 - Provider limit is 40 requests per minute for all models together. The throttle is global per process; two app instances would share nothing and could exceed it.
+- PyMuPDF 2.0 depends on `pymupdf-layout` and `onnxruntime` and activates the layout model at import. The bundle excludes them; `import pymupdf.layout` then raises ImportError, which PyMuPDF catches. Verified: text PDF parses in the frozen app.
+- sqlite-vec has no PyInstaller hook; `collect_dynamic_libs("sqlite_vec")` ships `vec0` next to the package so `sqlite_vec.load` finds it.
+- PyInstaller only sees static imports; `importlib.import_module("webview")` needs `hiddenimports`.
+- The Windows bundle is windowed (no console); `sys.stdout` is None there, so the launcher must not print.
+- Windows bundle smoke test is only verified in CI; the local build check ran on macOS.
 - Remote has `master`, CLAUDE.md says `main`. Branches are created from `origin/master` until the default branch is renamed.
 
 ## Sources

@@ -1,5 +1,6 @@
 import importlib
 import socket
+import sys
 import threading
 import time
 
@@ -44,7 +45,15 @@ def wait_ready(url, timeout=10.0, probe=None) -> bool:
     return False
 
 
-def main(*, make_app=make_app, serve=serve, wait_ready=wait_ready, webview=None) -> int:
+def run_server(app, port):
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+
+
+def main(argv=None, *, make_app=make_app, serve=serve, wait_ready=wait_ready, webview=None, run=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if len(argv) == 2 and argv[0] == "--serve":
+        (run or run_server)(make_app(), int(argv[1]))
+        return 0
     webview = webview or importlib.import_module("webview")
     port = free_port()
     url = f"http://127.0.0.1:{port}"

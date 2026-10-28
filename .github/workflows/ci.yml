@@ -18,3 +18,31 @@ jobs:
       - run: uv sync --all-groups
       - run: uv run playwright install --with-deps chromium
       - run: uv run pytest
+  build:
+    needs: test
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --all-groups
+      - run: uv run pyinstaller localrag.spec --noconfirm
+      - name: Smoke test bundle
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then EXE=dist/LocalRAG/LocalRAG.exe; else EXE=dist/LocalRAG/LocalRAG; fi
+          "$EXE" --serve 8765 &
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8765/health && ok=1 && break; sleep 1; done
+          kill %1 || true
+          [ "$ok" = 1 ]
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LocalRAG-${{ matrix.os }}
+          path: dist/

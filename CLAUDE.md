@@ -34,3 +34,7 @@
 - Windows needs WebView2 Runtime for pywebview : DESIGN.md
 - Remote default branch is master, not main : DESIGN.md
 - build.nvidia.com free tier is 40 requests/min across all models; every call goes through the throttle in nvidia.py : DESIGN.md
+- PyMuPDF 2.0 pulls pymupdf-layout + onnxruntime (170 MB); the PyInstaller spec excludes them : DESIGN.md
+- sqlite-vec has no PyInstaller hook; the spec collects vec0 with collect_dynamic_libs : DESIGN.md
+- webview is imported via importlib; the spec needs hiddenimports=["webview"] : DESIGN.md
+- Windows bundle has no console; the launcher must not print : DESIGN.md
