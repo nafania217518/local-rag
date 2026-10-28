@@ -16,7 +16,7 @@ A desktop app for macOS and Windows. The user creates a workspace, uploads 100+ 
 | OCR | NVIDIA hosted model, no local binaries |
 | Workspaces | A workspace owns documents and one index. A workspace has many chat sessions |
 | Answer features | Citations, streaming, reranking, hybrid search |
-| OS | macOS + Windows |
+| OS | Windows x64 (published build); macOS only for development |
 | Languages | Documents and questions in Ukrainian, Russian and English |
 | Chat model | Chosen after research, see 3. Model name is a setting |
 | API key | Plain config file in the app data folder |
@@ -71,7 +71,7 @@ pywebview window  ──HTTP/SSE──▶  FastAPI (uvicorn, background thread, 
 
 Package: `src/localrag/`. UI: `src/localrag/static/index.html` (vanilla HTML/CSS/JS, no build step). Launcher: `src/localrag/app.py` picks a free localhost port, starts uvicorn in a daemon thread, waits for `/health`, then `webview.create_window(url)` and `webview.start()`; closing the window stops the server. Every blocking collaborator is injectable so the launcher has unit tests without a window.
 
-Packaging: `localrag.spec` at the repo root, one-folder PyInstaller build (`uv run pyinstaller localrag.spec`). Output: `dist/LocalRAG/` on both OS plus `dist/LocalRAG.app` on macOS (about 95 MB). The spec collects `static/`, the sqlite-vec `vec0` library (no community hook), names `webview` as a hidden import (app.py loads it through importlib), and excludes the optional PyMuPDF layout stack (`pymupdf.layout`, onnxruntime, numpy, networkx, psutil; about 170 MB and its ONNX resources are not collected). `LocalRAG --serve <port>` runs the server without a window; the CI `build` job uses it to probe `/health` on the real bundle on macOS and Windows and uploads `dist/` as an artifact. The bundle is not code-signed; macOS Gatekeeper and Windows SmartScreen will warn.
+Packaging: `localrag.spec` at the repo root, one-file PyInstaller build (`uv run pyinstaller localrag.spec`). Output: `dist/LocalRAG.exe` on Windows (one fat executable; on macOS the same spec gives `dist/LocalRAG`, used only for local checks, never published). The spec collects `static/`, the sqlite-vec `vec0` library (no community hook), names `webview` as a hidden import (app.py loads it through importlib), and excludes the optional PyMuPDF layout stack (`pymupdf.layout`, onnxruntime, numpy, networkx, psutil; about 170 MB and its ONNX resources are not collected). `LocalRAG --serve <port>` runs the server without a window; the CI `build` job (Windows only, on a `v*` tag) uses it to probe `/health` on the real exe, zips it as `LocalRAG-windows-x64.zip` and attaches the zip to the GitHub release of the tag. Nothing else is published. The exe is not code-signed; Windows SmartScreen will warn.
 
 ### 4.1 Storage (local)
 
@@ -177,7 +177,7 @@ Limits to know:
 | index.py / retrieval.py / chat.py | unit, fake embed/rerank/chat functions | in-memory fakes |
 | api.py | integration with FastAPI `TestClient`, SSE parsed | fakes injected |
 | UI | browser tests with Playwright against the FastAPI server + fake NVIDIA | fakes |
-| packaging | CI job builds the bundle on macOS and Windows and runs `/health` | real build |
+| packaging | CI job builds the one-file Windows exe and runs `/health` | real build |
 
 Tools: `pytest`, `pytest-cov`, `respx`, `pytest-playwright`. Live NVIDIA calls are a separate opt-in test marked `live`, skipped without `NVIDIA_API_KEY`.
 
@@ -195,7 +195,7 @@ Each phase: requirements → tests → code, by an Opus sub-agent (low effort). 
 | 5 | Chat | `chat.py` | prompt contains numbered context, history limited to 10, SSE order token→citations→done, `reasoning_content` deltas become `thinking` events, `reasoning_effort` passed from settings, message persisted with citations |
 | 6 | API | `api.py` | one test per route, upload of many files, SSE end-to-end with fakes |
 | 7 | UI + launcher | `static/index.html`, `app.py` | Playwright: create workspace, upload, see status, ask, see streamed answer and sources, open settings |
-| 8 | Packaging | `localrag.spec`, `--serve` flag, CI `build` job with artifacts | `test_spec_*`, `test_main_serve_flag_*`, CI smoke `/health` on the bundle on both OS |
+| 8 | Packaging | `localrag.spec`, `--serve` flag, CI `build` job with artifacts (later cut to one Windows zip on the release, see caveats) | `test_spec_*`, `test_ci_*`, `test_main_serve_flag_*`, CI smoke `/health` on the exe |
 
 All phases are implemented; `uv run pytest` is the proof.
 
@@ -221,6 +221,7 @@ Local models, translation layer, images in answers, document editing, multi-user
 - PyInstaller only sees static imports; `importlib.import_module("webview")` needs `hiddenimports`.
 - The Windows bundle is windowed (no console); `sys.stdout` is None there, so the launcher must not print.
 - Windows bundle smoke test is only verified in CI; the local build check ran on macOS.
+- The macOS build was dropped: CI tests and builds on Windows only, and the release holds one zip with a one-file exe. A one-file exe unpacks itself into a temp folder on every start, so launch is slower than the one-folder build and antivirus may scan it; acceptable for one user per machine.
 - Remote default branch is `master`. Each phase branch was cut from the previous phase branch, because `master` holds only the initial commit until the phases are merged.
 
 ## 9. Feature: OCR pass for scanned documents
@@ -337,7 +338,8 @@ Consequences built into phase 4: in redo mode the OCR text replaces the layer on
 - https://pywebview.flowrl.com/guide/freezing.html — PyInstaller / py2app
 - https://parsebridge.com/blog/pymupdf-license/ — PyMuPDF AGPL
 - https://www.nutrient.io/blog/extract-text-from-pdf-pymupdf/ — scanned PDF detection with PyMuPDF
-- https://pyinstaller.org/en/stable/spec-files.html — spec file: datas, binaries, hiddenimports, excludes, macOS BUNDLE
+- https://pyinstaller.org/en/stable/spec-files.html — spec file: datas, binaries, hiddenimports, excludes
+- https://pyinstaller.org/en/stable/operating-mode.html — one-file mode unpacks to a temp folder at start
 - https://github.com/pyinstaller/pyinstaller-hooks-contrib — community hooks exist for pymupdf, uvicorn, webview, pydantic; none for sqlite_vec
 - https://deepwiki.com/git-liu835/codex-cn-bridge/4.1-backend-build-and-pyinstaller-packaging — FastAPI + uvicorn PyInstaller build example
 - https://github.com/mothercoremasterchief-prog/ocr-bench — OCR quality without ground truth: gibberish ratio, single-letter ratio, char-separated text
