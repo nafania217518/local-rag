@@ -37,4 +37,4 @@
 - Text-layer quality heuristic flags about 2 % of pages on real scans (figures, forms, covers); it cannot catch well-formed wrong words : DESIGN.md
 - nemotron-parse can return only the running header for a dense table page; redo mode keeps the text layer unless the OCR text is at least half as long and scores higher : DESIGN.md
 - nemotron-parse returns tables as LaTeX tabular and mixes Latin look-alikes into Cyrillic words : DESIGN.md
-- Only a Windows x64 one-file exe is published (zip on the GitHub release); one-file mode unpacks to a temp folder at every start : DESIGN.md
+- Only a Windows x64 one-file exe is published (zip on a GitHub release, built by hand; CI runs tests only, on pull requests); one-file mode unpacks to a temp folder at every start : DESIGN.md

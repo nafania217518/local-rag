@@ -26,7 +26,7 @@ Each document row has a scan button to force OCR on every page of that document.
 
 ### Windows x64
 
-Download `LocalRAG-windows-x64.zip` from the latest [release](https://github.com/nafania217518/local-rag/releases), unzip it and start `LocalRAG.exe`. The executable is not code-signed, so Windows SmartScreen warns on first start. It needs the WebView2 Runtime, which current Windows 10 and 11 already have.
+Download `LocalRAG-windows-x64.zip` from a [release](https://github.com/nafania217518/local-rag/releases), unzip it and start `LocalRAG.exe`. The executable is not code-signed, so Windows SmartScreen warns on first start. It needs the WebView2 Runtime, which current Windows 10 and 11 already have.
 
 ### From source (macOS or Windows)
 
@@ -55,6 +55,6 @@ Live tests against the real NVIDIA endpoints run only when `NVIDIA_API_KEY` is s
 
 ## Release
 
-Push a tag `v*`. CI runs the tests on Windows, builds the one-file executable, and attaches `LocalRAG-windows-x64.zip` to the GitHub release of the tag.
+Releases are built by hand on Windows: `uv run pyinstaller localrag.spec`, zip `dist/LocalRAG.exe` as `LocalRAG-windows-x64.zip`, and attach it to a GitHub release. CI only runs the test suite on pull requests.
 
 See [DESIGN.md](DESIGN.md) for the design and the known caveats.
