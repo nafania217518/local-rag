@@ -156,3 +156,10 @@ def test_set_document_path_updates_path(conn):
     _, d = _doc(conn)
     db.set_document_path(conn, d, "/new/path")
     assert db.get_document(conn, d)["path"] == "/new/path"
+
+
+def test_fts_search_matches_any_token_and_ranks_by_overlap(conn):
+    ws, d = _doc(conn)
+    a, b = db.add_chunks(conn, d, ws, [
+        (0, 1, "alpha beta gamma", [1, 0, 0, 0]), (1, 1, "alpha only here", [0, 1, 0, 0])])
+    assert [r[0] for r in db.fts_search(conn, ws, "what is alpha beta", 10)] == [a, b]

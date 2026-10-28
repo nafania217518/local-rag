@@ -130,7 +130,7 @@ def get_chunks(conn, ids):
 
 
 def fts_search(conn, workspace_id, query, k):
-    expr = " ".join('"' + t.replace('"', '""') + '"' for t in query.split())
+    expr = " OR ".join('"' + t.replace('"', '""') + '"' for t in query.split())
     if not expr:
         return []
     rows = conn.execute(
