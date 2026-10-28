@@ -84,6 +84,15 @@ def list_documents(conn, workspace_id):
                         [workspace_id]).fetchall()
 
 
+def get_document(conn, document_id):
+    return conn.execute("SELECT * FROM documents WHERE id = ?", [document_id]).fetchone()
+
+
+def set_document_path(conn, document_id, path):
+    with conn:
+        conn.execute("UPDATE documents SET path = ? WHERE id = ?", [path, document_id])
+
+
 def set_document_status(conn, document_id, status, pages=None, error=None):
     with conn:
         conn.execute("UPDATE documents SET status = ?, pages = ?, error = ? WHERE id = ?",

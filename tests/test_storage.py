@@ -144,3 +144,15 @@ def test_messages_round_trip_citations_json(conn):
     assert msgs[0]["citations"] is None
     assert msgs[1]["citations"] == [{"chunk_id": 1, "page": 2}]
     assert msgs[1]["role"] == "assistant" and msgs[1]["content"] == "a"
+
+
+def test_get_document_returns_row(conn):
+    ws, d = _doc(conn)
+    row = db.get_document(conn, d)
+    assert (row["id"], row["workspace_id"], row["name"]) == (d, ws, "d.txt")
+
+
+def test_set_document_path_updates_path(conn):
+    _, d = _doc(conn)
+    db.set_document_path(conn, d, "/new/path")
+    assert db.get_document(conn, d)["path"] == "/new/path"

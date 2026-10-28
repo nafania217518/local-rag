@@ -1,0 +1,111 @@
+from pathlib import Path
+
+import pytest
+
+from localrag import config, db, index
+
+
+@pytest.fixture
+def conn(tmp_path):
+    return db.connect(tmp_path / "t.db", embed_dim=4)
+
+
+def _count(conn, table):
+    return conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+
+
+def test_chunk_text_respects_size_and_overlap():
+    text = "\n\n".join(f"para {i} " + "x" * 80 for i in range(30))
+    chunks = index.chunk_text(text, size=300, overlap=50)
+    assert len(chunks) > 1
+    assert all(len(c) <= 350 for c in chunks)
+    for a, b in zip(chunks, chunks[1:]):
+        assert b.startswith(a[-50:].strip())
+
+
+def test_chunk_text_prefers_paragraph_boundaries():
+    paras = ["a" * 40, "b" * 40, "c" * 40]
+    chunks = index.chunk_text("\n\n".join(paras), size=90, overlap=0)
+    assert chunks == ["a" * 40 + "\n\n" + "b" * 40, "c" * 40]
+
+
+def test_chunk_text_hard_splits_long_paragraph():
+    chunks = index.chunk_text("z" * 250, size=100, overlap=0)
+    assert chunks == ["z" * 100, "z" * 100, "z" * 50]
+
+
+def test_chunk_text_empty_returns_empty():
+    assert index.chunk_text("") == []
+    assert index.chunk_text("  \n\n ") == []
+
+
+def test_chunk_pages_assigns_global_ord_and_keeps_page():
+    pages = [(1, "a" * 2000), (3, "short")]
+    out = index.chunk_pages(pages)
+    assert [o for o, _, _ in out] == list(range(len(out)))
+    assert [p for _, p, _ in out] == [1, 1, 3]
+    assert out[-1][2] == "short"
+
+
+def test_files_dir_is_under_app_data_dir():
+    assert index.files_dir() == config.app_data_dir() / "files"
+
+
+def test_store_file_copies_into_workspace_folder_and_sets_path(conn, tmp_path):
+    ws = db.create_workspace(conn, "w")
+    src = tmp_path / "My Doc.TXT"
+    src.write_text("hello", encoding="utf-8")
+    doc_id = index.store_file(conn, ws, src, dest_root=tmp_path / "files")
+    row = db.get_document(conn, doc_id)
+    expected = tmp_path / "files" / str(ws) / f"{doc_id}.TXT"
+    assert row["name"] == "My Doc.TXT"
+    assert row["path"] == str(expected)
+    assert expected.read_text(encoding="utf-8") == "hello"
+
+
+def _stored(conn, tmp_path, text):
+    ws = db.create_workspace(conn, "w")
+    src = tmp_path / "a.txt"
+    src.write_text(text, encoding="utf-8")
+    return index.store_file(conn, ws, src, dest_root=tmp_path / "files")
+
+
+def test_index_document_parses_chunks_embeds_and_marks_indexed(conn, tmp_path):
+    doc_id = _stored(conn, tmp_path, "hello world\n\nsecond paragraph")
+    calls = []
+
+    def fake_embed(cfg, texts, input_type):
+        calls.append((texts, input_type))
+        return [[0.0] * 4 for _ in texts]
+
+    index.index_document(conn, {}, doc_id, embed=fake_embed, parse_page=None)
+    assert _count(conn, "chunks") == 1
+    assert _count(conn, "chunks_vec") == 1
+    row = db.get_document(conn, doc_id)
+    assert (row["status"], row["pages"]) == ("indexed", 1)
+    assert calls[0][1] == "passage"
+
+
+def test_index_document_marks_failed_on_error_and_reraises(conn, tmp_path):
+    doc_id = _stored(conn, tmp_path, "hello")
+
+    def boom(cfg, texts, input_type):
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        index.index_document(conn, {}, doc_id, embed=boom)
+    row = db.get_document(conn, doc_id)
+    assert row["status"] == "failed"
+    assert "boom" in row["error"]
+
+
+def test_index_document_zero_chunks_marks_indexed_without_embed(conn, tmp_path):
+    doc_id = _stored(conn, tmp_path, "")
+
+    def no_embed(*a):
+        raise AssertionError("embed called")
+
+    index.index_document(conn, {}, doc_id, embed=no_embed)
+    row = db.get_document(conn, doc_id)
+    assert (row["status"], row["pages"]) == ("indexed", 0)
+    assert _count(conn, "chunks") == 0
