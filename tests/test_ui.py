@@ -432,13 +432,13 @@ def test_indexed_row_tooltip_counts_ocr_pages(page, server):
         expect(page.locator(f"#documents li[data-id='{i}']")).to_have_attribute("title", title)
 
 
-def _indexed_pdf_row(page, server):
+def _indexed_pdf_row(page, server, name="scan.pdf"):
     from test_api import _pdf_bytes
     new_ws(page, server)
-    page.set_input_files("#upload", {"name": "scan.pdf", "mimeType": "application/pdf",
+    page.set_input_files("#upload", {"name": name, "mimeType": "application/pdf",
                                      "buffer": _pdf_bytes("Hello text page with enough chars")})
     page.click("#upload-btn")
-    row = page.locator("#documents li", has_text="scan.pdf")
+    row = page.locator("#documents li", has_text=name)
     expect(row).to_have_attribute("data-status", "indexed")
     return row
 
@@ -457,6 +457,21 @@ def test_run_ocr_button_confirms_then_row_goes_pending(page, server):
     expect(page.locator("#ocr-ok")).to_have_text("Run OCR")
     page.click("#ocr-ok")
     expect(row).to_have_attribute("title", "Indexed, 1 page via OCR", timeout=10000)
+
+
+def test_run_ocr_dialog_wraps_long_document_name(page, server):
+    name = "СОУ_НАЕК_158-2025_Зварювання_та_контроль_зварних_з'єднань_обладнання_та_трубопроводів_АЕС.pdf"
+    row = _indexed_pdf_row(page, server, name)
+    row.hover()
+    row.locator("button.doc-ocr").click()
+    expect(page.locator("#ocr-dialog")).to_be_visible()
+    fits = page.evaluate("""() => {
+        const p = document.querySelector('#ocr-text'), r = document.querySelector('#ocr-dialog').getBoundingClientRect();
+        return {text: p.scrollWidth <= p.clientWidth,
+                rect: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight};
+    }""")
+    assert fits == {"text": True, "rect": True}
+    page.click("#ocr-cancel")
 
 
 def test_run_ocr_cancel_sends_no_request(page, server):
