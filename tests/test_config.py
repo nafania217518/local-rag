@@ -16,3 +16,46 @@ def test_app_data_dir_per_os(platform, monkeypatch, tmp_path):
         "linux": Path.home() / ".local" / "share" / "LocalRAG",
     }[platform]
     assert app_data_dir() == expected
+
+
+from localrag.config import DEFAULTS, EMBED_DIM, config_path, load_config, save_config
+
+
+def test_embed_dim_and_config_path():
+    assert EMBED_DIM == 4096
+    assert config_path() == app_data_dir() / "config.json"
+
+
+def test_load_config_defaults_when_missing(tmp_path):
+    assert load_config(tmp_path / "c.json") == DEFAULTS
+
+
+def test_config_round_trip(tmp_path):
+    p = tmp_path / "c.json"
+    cfg = {"api_key": "k", "rerank": False}
+    save_config(cfg, p)
+    assert load_config(p) == {**DEFAULTS, **cfg}
+
+
+def test_load_config_merges_partial_file(tmp_path):
+    p = tmp_path / "c.json"
+    p.write_text('{"api_key": "x"}')
+    assert load_config(p) == {**DEFAULTS, "api_key": "x"}
+
+
+def test_load_config_returns_copy(tmp_path):
+    load_config(tmp_path / "c.json")["api_key"] = "mutated"
+    assert DEFAULTS["api_key"] == ""
+
+
+def test_save_config_creates_parent_dir(tmp_path):
+    p = tmp_path / "a" / "b" / "c.json"
+    save_config({"api_key": "k"}, p)
+    assert p.exists()
+
+
+def test_default_path_used_when_none(tmp_path, monkeypatch):
+    import localrag.config as c
+    monkeypatch.setattr(c, "config_path", lambda: tmp_path / "d" / "c.json")
+    save_config({"api_key": "z"})
+    assert load_config()["api_key"] == "z"
