@@ -17,6 +17,7 @@ packages = ["src/localrag"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=localrag --cov-report=term-missing --cov-fail-under=90"
+markers = ["live: calls build.nvidia.com, needs NVIDIA_API_KEY"]
 
 [tool.coverage.run]
 source = ["localrag"]

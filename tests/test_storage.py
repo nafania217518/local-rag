@@ -163,3 +163,10 @@ def test_fts_search_matches_any_token_and_ranks_by_overlap(conn):
     a, b = db.add_chunks(conn, d, ws, [
         (0, 1, "alpha beta gamma", [1, 0, 0, 0]), (1, 1, "alpha only here", [0, 1, 0, 0])])
     assert [r[0] for r in db.fts_search(conn, ws, "what is alpha beta", 10)] == [a, b]
+
+
+def test_get_session_returns_row(conn):
+    ws = db.create_workspace(conn, "w")
+    s = db.create_session(conn, ws, "t")
+    row = db.get_session(conn, s)
+    assert (row["id"], row["workspace_id"], row["title"]) == (s, ws, "t")

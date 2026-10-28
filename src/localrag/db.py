@@ -168,3 +168,7 @@ def list_messages(conn, session_id):
     rows = conn.execute("SELECT * FROM messages WHERE session_id = ? ORDER BY id",
                         [session_id]).fetchall()
     return [{**dict(r), "citations": r["citations"] and json.loads(r["citations"])} for r in rows]
+
+
+def get_session(conn, session_id):
+    return conn.execute("SELECT * FROM sessions WHERE id = ?", [session_id]).fetchone()
