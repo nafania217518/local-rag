@@ -223,6 +223,62 @@ Local models, translation layer, images in answers, document editing, multi-user
 - Windows bundle smoke test is only verified in CI; the local build check ran on macOS.
 - Remote default branch is `master`. Each phase branch was cut from the previous phase branch, because `master` holds only the initial commit until the phases are merged.
 
+## 9. Feature: OCR pass for scanned documents
+
+Status: planned 2026-10-28, branch `feature/ocr-pass`. Quiz answers: OCR runs for pages without a text layer (as now), for pages whose text layer is broken, and on demand for a whole document; engine stays the hosted `nemotron-parse`; the UI shows page progress; OCR text goes to the index only.
+
+### 9.1 What exists
+
+`parsers.parse_pdf` sends a page to `parse_page` when its text layer has fewer than 20 characters. There is no quality check, no progress, no way to force OCR, and the parse model has not been verified on a Ukrainian scanned page.
+
+### 9.2 Design
+
+Three OCR modes, named after ocrmypdf's: `skip` (pages with a usable text layer keep it), `redo` (pages with a broken layer are re-read), `force` (every page is re-read). Automatic indexing runs skip+redo; the manual action runs force.
+
+Page routing, in `parsers.py`:
+1. `is_scanned(page)`: a page is a scan when one image covers at least half of the page area (`page.get_image_info()` bboxes). Digital pages are never sent to OCR unless forced; a logo-only cover page with little text is still treated as text.
+2. `text_quality(text) -> float` in `[0, 1]`: share of good tokens among whitespace tokens of two or more characters, with these rmgarbage-style rules marking a token bad: longer than 40 characters; four or more identical characters in a row; fewer than half of its characters alphanumeric; Cyrillic and Latin letters mixed in one token. If more than 30 % of the tokens are single letters (character-separated text), the score is capped at 0.5. Pages with fewer than 5 tokens score 1.0 and are decided by the 20-character rule as now.
+3. A scanned page goes to OCR when its text has fewer than 20 characters or `text_quality < OCR_QUALITY_MIN` (constant, 0.8 to start). `# ponytail: fixed threshold, calibrate on real scans; a setting only if users ask`.
+4. `parse_pdf(path, cfg, parse_page, *, force_ocr=False, on_page=None)`; `on_page(done, total, via_ocr)` is called after every page.
+
+Limits of the heuristic, stated up front: it catches mojibake, symbol soup, mixed scripts and character-separated text. It cannot catch a wrong but well-formed word (`ДОКУМЕНТІГ`) without a dictionary; that is what the manual force mode is for.
+
+Progress and record, in `db.py` and `index.py`:
+- `documents` gets `pages_done INTEGER` and `ocr_pages INTEGER` (added by `ALTER TABLE` on existing databases, same pattern as `sha256`). `pages` is set to the total at the start of parsing, not at the end.
+- `index_document(..., force_ocr=False)` passes `on_page` that writes `pages_done` and counts OCR'd pages; the existing cancel check runs before every OCR call. At the end `ocr_pages` is stored.
+- Manual run: `db.delete_chunks(conn, document_id)` (chunks, FTS rows and vec rows), status back to `pending`, `pages_done` 0, then `index_document(force_ocr=True)` in the background.
+
+API, in `api.py`: `POST /workspaces/{ws}/documents/{id}/ocr` → 202 with the document row; 404 for unknown; 409 while the document is `pending`. `GET .../documents` already returns the new columns.
+
+UI, in `index.html`:
+- Pending row: the amber dot keeps pulsing; a small pencil-colored `34 / 170` appears after the name while `pages` is known; the tooltip says `Indexing, page 34 of 170`.
+- Indexed row: tooltip `Indexed` or `Indexed, 12 pages via OCR`.
+- Row action: a scan icon button (aria-label `Run OCR`) next to the × on hover. It opens a confirm dialog: `Run OCR on <name>? All 170 pages are sent to the parse model, about 5 minutes.` (minutes = pages / 40, rounded up) with Run OCR and Cancel. The row returns to pending and polling resumes.
+
+Rate limit consequence: force mode on a 170-page document is 170 parse requests plus about 6 embed requests, about 4.5 minutes at 40 rpm, and it blocks nothing else except the shared throttle.
+
+### 9.3 Tests (= requirements)
+
+| Module | Tests |
+|---|---|
+| parsers.py | `test_text_quality_clean_page_scores_high`, `test_text_quality_mixed_script_and_symbol_soup_scores_low`, `test_text_quality_char_separated_text_capped`, `test_is_scanned_requires_image_over_half_page`, `test_scanned_page_with_bad_text_layer_goes_to_ocr`, `test_digital_page_with_bad_text_is_not_ocred`, `test_force_ocr_reads_every_page`, `test_on_page_reports_progress_and_ocr_flag` |
+| db.py | `test_schema_adds_progress_columns_to_existing_db`, `test_set_document_progress`, `test_delete_chunks_removes_fts_and_vec_rows` |
+| index.py | `test_index_sets_total_pages_before_parsing`, `test_index_records_pages_done_and_ocr_pages`, `test_force_ocr_reindex_replaces_chunks`, cancel tests keep passing |
+| api.py | `test_run_ocr_route_resets_and_reindexes`, `test_run_ocr_conflict_while_pending`, `test_run_ocr_unknown_document_404` |
+| UI | `test_pending_row_shows_page_progress`, `test_indexed_row_tooltip_counts_ocr_pages`, `test_run_ocr_button_confirms_then_row_goes_pending` |
+| live | `test_live_parse_reads_ukrainian_scanned_page`: render page 1 of a Ukrainian scan to PNG, call `parse_page`, assert the expected heading words; records the DESIGN caveat as verified |
+
+### 9.4 Phases
+
+| # | Step | Deliverable |
+|---|---|---|
+| 1 | Quality heuristic and routing | `text_quality`, `is_scanned`, `parse_pdf` modes and `on_page` |
+| 2 | Progress and record | schema columns, `set_document_progress`, `delete_chunks`, `index_document` wiring |
+| 3 | Manual run | route, row action, confirm dialog, progress in the row |
+| 4 | Calibration and live check | run the heuristic over real scans (the three НАЕК standards, 433 pages, once they are back in `test_pdf_docs/`), adjust `OCR_QUALITY_MIN`, run the live test, update caveats |
+
+Calibration needs real scans in `test_pdf_docs/`; the folder is untracked and was not present on 2026-10-28 21:40 when the plan was written.
+
 ## Sources
 
 - https://build.nvidia.com/llms.txt — base URL, auth, OpenAI compatibility
@@ -269,3 +325,7 @@ Local models, translation layer, images in answers, document editing, multi-user
 - https://pyinstaller.org/en/stable/spec-files.html — spec file: datas, binaries, hiddenimports, excludes, macOS BUNDLE
 - https://github.com/pyinstaller/pyinstaller-hooks-contrib — community hooks exist for pymupdf, uvicorn, webview, pydantic; none for sqlite_vec
 - https://deepwiki.com/git-liu835/codex-cn-bridge/4.1-backend-build-and-pyinstaller-packaging — FastAPI + uvicorn PyInstaller build example
+- https://github.com/mothercoremasterchief-prog/ocr-bench — OCR quality without ground truth: gibberish ratio, single-letter ratio, char-separated text
+- https://github.com/erl-ang/interactive-ocr — rmgarbage heuristics (Taghva et al.) for OCR quality without ground truth
+- https://ocrmypdf.readthedocs.io/en/latest/cookbook.html — skip / redo / force OCR modes; redo replaces only OCR text, force rasterizes all pages
+- https://getsearchablepdf.com/blog/force-ocr-fix-bad-text-layer.html — symptoms of a bad text layer and when to force OCR
