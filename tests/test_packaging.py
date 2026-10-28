@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 SPEC = (ROOT / "localrag.spec").read_text()
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
+DOCKERFILE = (ROOT / "Dockerfile.windows").read_text()
 
 
 def test_spec_collects_static_files_and_sqlite_vec_binary():
@@ -34,3 +35,8 @@ def test_ci_runs_only_on_windows():
 def test_ci_runs_tests_only_on_pull_requests():
     assert "pull_request:" in CI and "uv run pytest" in CI
     assert not any(s in CI for s in ("tags:", "pyinstaller", "gh release", "contents: write"))
+
+
+def test_windows_dockerfile_builds_the_spec_one_file_exe():
+    assert all(s in DOCKERFILE for s in (
+        "tobix/pywine:3.12", "pyinstaller localrag.spec", "FROM scratch", "/src/dist/LocalRAG.exe"))
