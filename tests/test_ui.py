@@ -402,3 +402,70 @@ def test_enter_in_rename_dialog_renames_workspace(page, server):
     page.press("#ws-name", "Enter")
     expect(page.locator("#workspaces li.selected .name")).to_have_text(name + "-e")
     expect(page.locator("#ws-dialog")).to_be_hidden()
+
+
+def _stub_docs(page, server, docs):
+    import json
+    new_ws(page, server)
+    page.route("**/workspaces/*/documents", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=json.dumps(docs)))
+    page.reload()
+    page.locator("#workspaces li").last.click()
+
+
+def test_pending_row_shows_page_progress(page, server):
+    _stub_docs(page, server, [
+        {"id": 1, "name": "a.pdf", "status": "pending", "error": None, "pages": 170, "pages_done": 34},
+        {"id": 2, "name": "b.pdf", "status": "pending", "error": None, "pages": None, "pages_done": None}])
+    a, b = page.locator("#documents li[data-id='1']"), page.locator("#documents li[data-id='2']")
+    expect(a.locator("span.progress")).to_have_text("34 / 170")
+    expect(a).to_have_attribute("title", "Indexing, page 34 of 170")
+    expect(b.locator("span.progress")).to_have_count(0)
+    expect(b).to_have_attribute("title", "Indexing")
+
+
+def test_indexed_row_tooltip_counts_ocr_pages(page, server):
+    _stub_docs(page, server, [
+        {"id": i, "name": f"{i}.pdf", "status": "indexed", "error": None, "pages": 20, "ocr_pages": n}
+        for i, n in [(1, 12), (2, 1), (3, 0)]])
+    for i, title in [(1, "Indexed, 12 pages via OCR"), (2, "Indexed, 1 page via OCR"), (3, "Indexed")]:
+        expect(page.locator(f"#documents li[data-id='{i}']")).to_have_attribute("title", title)
+
+
+def _indexed_pdf_row(page, server):
+    from test_api import _pdf_bytes
+    new_ws(page, server)
+    page.set_input_files("#upload", {"name": "scan.pdf", "mimeType": "application/pdf",
+                                     "buffer": _pdf_bytes("Hello text page with enough chars")})
+    page.click("#upload-btn")
+    row = page.locator("#documents li", has_text="scan.pdf")
+    expect(row).to_have_attribute("data-status", "indexed")
+    return row
+
+
+def test_run_ocr_button_confirms_then_row_goes_pending(page, server):
+    row = _indexed_pdf_row(page, server)
+    btn = row.locator("button.doc-ocr")
+    expect(btn).to_have_attribute("aria-label", "Run OCR")
+    expect(btn.locator("svg[data-icon=scan]")).to_have_count(1)
+    row.hover()
+    btn.click()
+    dlg = page.locator("#ocr-dialog")
+    expect(dlg).to_be_visible()
+    for text in ["scan.pdf", "1 page", "about 1 minute"]:
+        expect(dlg).to_contain_text(text)
+    expect(page.locator("#ocr-ok")).to_have_text("Run OCR")
+    page.click("#ocr-ok")
+    expect(row).to_have_attribute("title", "Indexed, 1 page via OCR", timeout=10000)
+
+
+def test_run_ocr_cancel_sends_no_request(page, server):
+    row = _indexed_pdf_row(page, server)
+    posts = []
+    page.on("request", lambda r: r.method == "POST" and r.url.endswith("/ocr") and posts.append(r))
+    row.hover()
+    row.locator("button.doc-ocr").click()
+    page.click("#ocr-cancel")
+    expect(page.locator("#ocr-dialog")).not_to_be_visible()
+    expect(row).to_have_attribute("title", "Indexed")
+    assert posts == []

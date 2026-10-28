@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS workspaces(id INTEGER PRIMARY KEY, name TEXT NOT NULL
 CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY,
     workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     name TEXT NOT NULL, path TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
-    pages INTEGER, error TEXT, sha256 TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+    pages INTEGER, error TEXT, sha256 TEXT, pages_done INTEGER, ocr_pages INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS chunks(id INTEGER PRIMARY KEY,
     document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     workspace_id INTEGER NOT NULL, ord INTEGER NOT NULL, page INTEGER NOT NULL, text TEXT NOT NULL);
@@ -53,8 +53,10 @@ def connect(path: str | os.PathLike, embed_dim: int = config.EMBED_DIM) -> sqlit
 
 def init_schema(conn, embed_dim):
     conn.executescript(SCHEMA.replace("{dim}", str(int(embed_dim))))
-    if "sha256" not in [r[1] for r in conn.execute("PRAGMA table_info(documents)")]:
-        conn.execute("ALTER TABLE documents ADD COLUMN sha256 TEXT")
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(documents)")]
+    for col, typ in [("sha256", "TEXT"), ("pages_done", "INTEGER"), ("ocr_pages", "INTEGER")]:
+        if col not in cols:
+            conn.execute(f"ALTER TABLE documents ADD COLUMN {col} {typ}")
 
 
 def _insert(conn, sql, params):
@@ -100,16 +102,28 @@ def set_document_path(conn, document_id, path):
         conn.execute("UPDATE documents SET path = ? WHERE id = ?", [path, document_id])
 
 
-def set_document_status(conn, document_id, status, pages=None, error=None):
+def set_document_status(conn, document_id, status, pages=None, error=None, ocr_pages=None):
     with conn:
-        conn.execute("UPDATE documents SET status = ?, pages = ?, error = ? WHERE id = ?",
-                     [status, pages, error, document_id])
+        conn.execute("UPDATE documents SET status = ?, pages = ?, error = ?, ocr_pages = ? WHERE id = ?",
+                     [status, pages, error, ocr_pages, document_id])
 
 
-def delete_document(conn, document_id):
+def set_document_progress(conn, document_id, pages_done, pages=None):
+    with conn:
+        conn.execute("UPDATE documents SET pages_done = ?, pages = coalesce(?, pages) WHERE id = ?",
+                     [pages_done, pages, document_id])
+
+
+def delete_chunks(conn, document_id):
     with conn:
         conn.execute("DELETE FROM chunks_vec WHERE chunk_id IN "
                      "(SELECT id FROM chunks WHERE document_id = ?)", [document_id])
+        conn.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
+
+
+def delete_document(conn, document_id):
+    delete_chunks(conn, document_id)
+    with conn:
         conn.execute("DELETE FROM documents WHERE id = ?", [document_id])
 
 

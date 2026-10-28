@@ -159,3 +159,77 @@ def test_index_cancelled_before_parse_of_each_scanned_page(conn, tmp_path):
     with pytest.raises(index.Cancelled):
         index.index_document(conn, {}, doc_id, embed=None, parse_page=fake_parse)
     assert len(calls) == 1
+
+
+def _pdf_doc(conn, tmp_path, pages):
+    import pymupdf
+    pdf = pymupdf.open()
+    for text in pages:
+        page = pdf.new_page()
+        if text:
+            page.insert_text((72, 72), text)
+    src = tmp_path / "p.pdf"
+    pdf.save(src)
+    return index.store_file(conn, db.create_workspace(conn, "w"), src, dest_root=tmp_path / "files")
+
+
+def _embed(cfg, texts, input_type):
+    return [[1.0, 0, 0, 0] for _ in texts]
+
+
+def test_index_sets_total_pages_before_parsing(conn, tmp_path):
+    doc_id = _pdf_doc(conn, tmp_path, ["Hello text page with enough chars", None])
+    seen = []
+
+    def fake_parse(cfg, png):
+        seen.append(db.get_document(conn, doc_id)["pages"])
+        return "OCR TEXT"
+
+    index.index_document(conn, {}, doc_id, embed=_embed, parse_page=fake_parse)
+    assert seen == [2]
+
+
+def test_index_records_pages_done_and_ocr_pages(conn, tmp_path):
+    doc_id = _pdf_doc(conn, tmp_path, ["Hello text page with enough chars", None, "Third page with enough chars"])
+    index.index_document(conn, {}, doc_id, embed=_embed, parse_page=lambda c, png: "OCR TEXT")
+    row = db.get_document(conn, doc_id)
+    assert (row["status"], row["pages"], row["pages_done"], row["ocr_pages"]) == ("indexed", 3, 3, 1)
+
+
+def test_force_ocr_reindex_replaces_chunks(conn, tmp_path):
+    doc_id = _pdf_doc(conn, tmp_path, ["Hello text page with enough chars", "Second page with enough chars"])
+    index.index_document(conn, {}, doc_id, embed=_embed, parse_page=lambda c, png: "OCR TEXT")
+    assert db.get_document(conn, doc_id)["ocr_pages"] == 0 and _count(conn, "chunks") > 0
+    index.reindex(conn, {}, doc_id, force_ocr=True, embed=_embed, parse_page=lambda c, png: "FAKE OCR")
+    row = db.get_document(conn, doc_id)
+    texts = [r[0] for r in conn.execute("SELECT text FROM chunks")]
+    assert texts and all(t == "FAKE OCR" for t in texts)
+    assert (row["status"], row["ocr_pages"]) == ("indexed", 2)
+
+
+def test_final_pages_is_total_page_count_even_with_blank_pages(conn, tmp_path):
+    doc_id = _pdf_doc(conn, tmp_path, ["Hello text page with enough chars", None, "Third page with enough chars"])
+    index.index_document(conn, {}, doc_id, embed=_embed, parse_page=None)
+    row = db.get_document(conn, doc_id)
+    assert (row["status"], row["pages"], row["pages_done"], row["ocr_pages"]) == ("indexed", 3, 3, 0)
+
+
+def test_index_sets_total_pages_before_first_page_ocr(conn, tmp_path):
+    doc_id = _pdf_doc(conn, tmp_path, [None, "Second page with enough chars"])
+    seen = []
+
+    def fake_parse(cfg, png):
+        row = db.get_document(conn, doc_id)
+        seen.append((row["pages"], row["pages_done"]))
+        return "OCR TEXT"
+
+    index.index_document(conn, {}, doc_id, embed=_embed, parse_page=fake_parse)
+    assert seen == [(2, 0)]
+
+
+def test_reset_document_clears_chunks_and_sets_pending(conn, tmp_path):
+    doc_id = _pdf_doc(conn, tmp_path, ["Hello text page with enough chars"])
+    index.index_document(conn, {}, doc_id, embed=_embed, parse_page=None)
+    index.reset_document(conn, doc_id)
+    row = db.get_document(conn, doc_id)
+    assert (row["status"], row["pages_done"], _count(conn, "chunks")) == ("pending", 0, 0)

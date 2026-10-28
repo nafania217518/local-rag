@@ -38,6 +38,12 @@
   li[data-status="failed"] .status::before { background: var(--red); }
   .doc-delete { border: 0; background: none; padding: 0 4px; color: var(--pencil); visibility: hidden; }
   li:hover .doc-delete, li:focus-within .doc-delete { visibility: visible; }
+  .doc-ocr { border: 0; background: none; padding: 0 4px; color: var(--pencil); visibility: hidden; display: inline-flex; }
+  .doc-ocr svg { width: 16px; height: 16px; }
+  li:hover .doc-ocr, li:focus-within .doc-ocr { visibility: visible; }
+  li[data-status="pending"] .doc-ocr { display: none; }
+  .progress + .status { margin-left: 6px; }
+  .progress { flex: none; font-family: var(--sans); font-size: 12px; color: var(--pencil); margin-left: auto; }
   .empty { font: 14px/1.5 var(--serif); color: var(--pencil); margin: 12px 0 0; }
   #messages .empty { margin: 0; }
   .icon { border: 0; background: none; padding: 4px; color: var(--pencil); display: inline-flex; align-items: center; }
@@ -158,6 +164,12 @@
     <div class="actions"><button id="ws-delete-cancel" value="cancel">Cancel</button><button id="ws-delete-ok" value="ok" class="primary">Delete</button></div>
   </form>
 </dialog>
+<dialog id="ocr-dialog">
+  <form method="dialog">
+    <p id="ocr-text"></p>
+    <div class="actions"><button id="ocr-cancel" value="cancel">Cancel</button><button id="ocr-ok" value="ok" class="primary">Run OCR</button></div>
+  </form>
+</dialog>
 <dialog id="settings">
   <form method="dialog">
     <label>API key <input type="password" name="api_key"></label>
@@ -273,6 +285,20 @@ $("#ws-delete-ok").onclick = async () => {
 };
 
 // Documents
+const SCAN = '<svg data-icon="scan" viewBox="0 0 16 16" stroke="currentColor" fill="none" stroke-width="1.5"><path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3M2 8h12"/></svg>';
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+let ocrDoc = null;
+function openOcrDialog(d) {
+  ocrDoc = d;
+  const pages = d.pages || 1;
+  $("#ocr-text").textContent = `Run OCR on ${d.name}? ${plural(pages, "page")}, about ${plural(Math.ceil(pages / 40), "minute")}. The current text is replaced.`;
+  $("#ocr-dialog").showModal();
+}
+$("#ocr-ok").onclick = async () => {
+  await api("POST", `/workspaces/${state.ws}/documents/${ocrDoc.id}/ocr`);
+  loadDocuments();
+};
+
 async function loadDocuments() {
   if (!state.ws) return;
   const docs = await api("GET", `/workspaces/${state.ws}/documents`);
@@ -285,10 +311,19 @@ async function loadDocuments() {
     li.append(nm);
     li.dataset.id = d.id;
     li.dataset.status = d.status;
-    li.title = d.status === "failed" ? d.error || "failed" : d.status === "pending" ? "Indexing" : "Indexed";
+    const progress = d.status === "pending" && d.pages != null;
+    li.title = d.status === "failed" ? d.error || "failed"
+      : d.status === "pending" ? (progress ? `Indexing, page ${d.pages_done || 0} of ${d.pages}` : "Indexing")
+      : d.ocr_pages ? `Indexed, ${plural(d.ocr_pages, "page")} via OCR` : "Indexed";
+    if (progress) li.append(el("span", "progress", `${d.pages_done || 0} / ${d.pages}`));
+    const ocr = el("button", "doc-ocr");
+    ocr.setAttribute("aria-label", "Run OCR");
+    ocr.title = "Run OCR";
+    ocr.innerHTML = SCAN;
+    ocr.onclick = () => openOcrDialog(d);
     const del = el("button", "doc-delete", "×");
     del.onclick = async () => { await api("DELETE", `/workspaces/${state.ws}/documents/${d.id}`); loadDocuments(); };
-    li.append(el("span", "status", d.status), del);
+    li.append(el("span", "status", d.status), ocr, del);
     ul.append(li);
   }
   $("#docs-empty").hidden = docs.length > 0;

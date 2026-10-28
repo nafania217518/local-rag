@@ -237,3 +237,61 @@ def test_upload_same_file_twice_is_skipped(tmp_path):
     w2 = ws(client, "other")
     assert upload(client, w2, ("a.txt", "same")).json()[0]["id"] != first["id"]
     assert len(runs) == 2
+
+
+def _pdf_bytes(*texts):
+    import pymupdf
+    doc = pymupdf.open()
+    for t in texts:
+        doc.new_page().insert_text((72, 72), t)
+    return doc.tobytes()
+
+
+def _upload_pdf(client, w):
+    files = [("files", ("s.pdf", _pdf_bytes("Hello text page with enough chars"), "application/pdf"))]
+    return client.post(f"/workspaces/{w}/documents", files=files).json()[0]
+
+
+def test_run_ocr_route_resets_and_reindexes(tmp_path):
+    from localrag import db
+    client = make(tmp_path, parse_page=lambda cfg, png: "OCR TEXT")
+    w = ws(client)
+    d = _upload_pdf(client, w)
+    r = client.post(f"/workspaces/{w}/documents/{d['id']}/ocr")
+    assert r.status_code == 202 and r.json()["id"] == d["id"]
+    row = next(x for x in client.get(f"/workspaces/{w}/documents").json() if x["id"] == d["id"])
+    assert (row["status"], row["ocr_pages"], row["pages"]) == ("indexed", 1, 1)
+    conn = db.connect(tmp_path / "t.db")
+    assert [r[0] for r in conn.execute("SELECT text FROM chunks")] == ["OCR TEXT"]
+
+
+def test_run_ocr_conflict_while_pending(client, tmp_path):
+    from localrag import db
+    w = ws(client)
+    d = upload(client, w, ("a.txt", "text")).json()[0]["id"]
+    db.set_document_status(db.connect(tmp_path / "t.db"), d, "pending")
+    assert client.post(f"/workspaces/{w}/documents/{d}/ocr").status_code == 409
+
+
+def test_run_ocr_unknown_document_404(client):
+    w = ws(client)
+    d = upload(client, w, ("a.txt", "text")).json()[0]["id"]
+    assert client.post(f"/workspaces/{w}/documents/{d + 99}/ocr").status_code == 404
+    assert client.post(f"/workspaces/{w + 1}/documents/{d}/ocr").status_code == 404
+
+
+def test_run_ocr_route_returns_pending_row_before_background_job(tmp_path):
+    from localrag import db
+    jobs = []
+    client = make(tmp_path, parse_page=lambda cfg, png: "OCR TEXT", run_in_background=jobs.append)
+    w = ws(client)
+    d = _upload_pdf(client, w)["id"]
+    jobs.pop()()
+    body = client.post(f"/workspaces/{w}/documents/{d}/ocr").json()
+    assert (body["status"], body["pages_done"]) == ("pending", 0)
+    conn = db.connect(tmp_path / "t.db")
+    assert conn.execute("SELECT count(*) FROM chunks").fetchone()[0] == 0
+    assert client.get(f"/workspaces/{w}/documents").json()[0]["status"] == "pending"
+    jobs.pop()()
+    row = client.get(f"/workspaces/{w}/documents").json()[0]
+    assert (row["status"], row["ocr_pages"]) == ("indexed", 1)

@@ -16,7 +16,7 @@ A desktop app for macOS and Windows. The user creates a workspace, uploads 100+ 
 | OCR | NVIDIA hosted model, no local binaries |
 | Workspaces | A workspace owns documents and one index. A workspace has many chat sessions |
 | Answer features | Citations, streaming, reranking, hybrid search |
-| OS | macOS + Windows |
+| OS | Windows x64 (published build); macOS only for development |
 | Languages | Documents and questions in Ukrainian, Russian and English |
 | Chat model | Chosen after research, see 3. Model name is a setting |
 | API key | Plain config file in the app data folder |
@@ -71,7 +71,7 @@ pywebview window  ──HTTP/SSE──▶  FastAPI (uvicorn, background thread, 
 
 Package: `src/localrag/`. UI: `src/localrag/static/index.html` (vanilla HTML/CSS/JS, no build step). Launcher: `src/localrag/app.py` picks a free localhost port, starts uvicorn in a daemon thread, waits for `/health`, then `webview.create_window(url)` and `webview.start()`; closing the window stops the server. Every blocking collaborator is injectable so the launcher has unit tests without a window.
 
-Packaging: `localrag.spec` at the repo root, one-folder PyInstaller build (`uv run pyinstaller localrag.spec`). Output: `dist/LocalRAG/` on both OS plus `dist/LocalRAG.app` on macOS (about 95 MB). The spec collects `static/`, the sqlite-vec `vec0` library (no community hook), names `webview` as a hidden import (app.py loads it through importlib), and excludes the optional PyMuPDF layout stack (`pymupdf.layout`, onnxruntime, numpy, networkx, psutil; about 170 MB and its ONNX resources are not collected). `LocalRAG --serve <port>` runs the server without a window; the CI `build` job uses it to probe `/health` on the real bundle on macOS and Windows and uploads `dist/` as an artifact. The bundle is not code-signed; macOS Gatekeeper and Windows SmartScreen will warn.
+Packaging: `localrag.spec` at the repo root, one-file PyInstaller build (`uv run pyinstaller localrag.spec`). Output: `dist/LocalRAG.exe` on Windows (one fat executable; on macOS the same spec gives `dist/LocalRAG`, used only for local checks, never published). The spec collects `static/`, the sqlite-vec `vec0` library (no community hook), names `webview` as a hidden import (app.py loads it through importlib), and excludes the optional PyMuPDF layout stack (`pymupdf.layout`, onnxruntime, numpy, networkx, psutil; about 170 MB and its ONNX resources are not collected). `LocalRAG --serve <port>` runs the server without a window; the CI `build` job (Windows only, on a `v*` tag) uses it to probe `/health` on the real exe, zips it as `LocalRAG-windows-x64.zip` and attaches the zip to the GitHub release of the tag. Nothing else is published. The exe is not code-signed; Windows SmartScreen will warn.
 
 ### 4.1 Storage (local)
 
@@ -158,7 +158,7 @@ Limits to know:
 - FTS5 uses the `unicode61` tokenizer with `remove_diacritics 2`. It matches exact tokens in any script and does no stemming (the `porter` stemmer is English only). Inflected languages lose some keyword recall; the vector path and the reranker cover that.
 - The chat model is the only language-limited component. Every Nemotron chat model lists Western European languages, Japanese and Chinese, none lists Ukrainian. The default is `nvidia/nemotron-3.5-super-vl-120b-a12b`: despite its official list it answered Ukrainian and Russian RAG questions correctly in the live probe (see the table in section 3). The system prompt tells the model to answer in the language of the question. Lightning is the fast fallback; Qwen3-Next if it gets a free endpoint.
 - `tests/test_live_languages.py` (opt-in, needs `NVIDIA_API_KEY`): one Ukrainian question over a Ukrainian passage, one Russian, one cross-lingual (English question, Ukrainian passage). All three passed on 2026-10-28.
-- Scanned pages: `nemotron-parse` is multilingual by model card. Not yet verified on a Ukrainian or Russian scanned page.
+- Scanned pages: `nemotron-parse` verified live on 2026-10-28 on Ukrainian scans (see 9.5).
 
 ### 4.9 SOLID mapping
 
@@ -177,7 +177,7 @@ Limits to know:
 | index.py / retrieval.py / chat.py | unit, fake embed/rerank/chat functions | in-memory fakes |
 | api.py | integration with FastAPI `TestClient`, SSE parsed | fakes injected |
 | UI | browser tests with Playwright against the FastAPI server + fake NVIDIA | fakes |
-| packaging | CI job builds the bundle on macOS and Windows and runs `/health` | real build |
+| packaging | CI job builds the one-file Windows exe and runs `/health` | real build |
 
 Tools: `pytest`, `pytest-cov`, `respx`, `pytest-playwright`. Live NVIDIA calls are a separate opt-in test marked `live`, skipped without `NVIDIA_API_KEY`.
 
@@ -195,7 +195,7 @@ Each phase: requirements → tests → code, by an Opus sub-agent (low effort). 
 | 5 | Chat | `chat.py` | prompt contains numbered context, history limited to 10, SSE order token→citations→done, `reasoning_content` deltas become `thinking` events, `reasoning_effort` passed from settings, message persisted with citations |
 | 6 | API | `api.py` | one test per route, upload of many files, SSE end-to-end with fakes |
 | 7 | UI + launcher | `static/index.html`, `app.py` | Playwright: create workspace, upload, see status, ask, see streamed answer and sources, open settings |
-| 8 | Packaging | `localrag.spec`, `--serve` flag, CI `build` job with artifacts | `test_spec_*`, `test_main_serve_flag_*`, CI smoke `/health` on the bundle on both OS |
+| 8 | Packaging | `localrag.spec`, `--serve` flag, CI `build` job with artifacts (later cut to one Windows zip on the release, see caveats) | `test_spec_*`, `test_ci_*`, `test_main_serve_flag_*`, CI smoke `/health` on the exe |
 
 All phases are implemented; `uv run pytest` is the proof.
 
@@ -221,7 +221,79 @@ Local models, translation layer, images in answers, document editing, multi-user
 - PyInstaller only sees static imports; `importlib.import_module("webview")` needs `hiddenimports`.
 - The Windows bundle is windowed (no console); `sys.stdout` is None there, so the launcher must not print.
 - Windows bundle smoke test is only verified in CI; the local build check ran on macOS.
+- The macOS build was dropped: CI tests and builds on Windows only, and the release holds one zip with a one-file exe. A one-file exe unpacks itself into a temp folder on every start, so launch is slower than the one-folder build and antivirus may scan it; acceptable for one user per machine.
 - Remote default branch is `master`. Each phase branch was cut from the previous phase branch, because `master` holds only the initial commit until the phases are merged.
+
+## 9. Feature: OCR pass for scanned documents
+
+Status: planned 2026-10-28, branch `feature/ocr-pass`. Quiz answers: OCR runs for pages without a text layer (as now), for pages whose text layer is broken, and on demand for a whole document; engine stays the hosted `nemotron-parse`; the UI shows page progress; OCR text goes to the index only.
+
+### 9.1 What exists
+
+`parsers.parse_pdf` sends a page to `parse_page` when its text layer has fewer than 20 characters. There is no quality check, no progress, no way to force OCR, and the parse model has not been verified on a Ukrainian scanned page.
+
+### 9.2 Design
+
+Three OCR modes, named after ocrmypdf's: `skip` (pages with a usable text layer keep it), `redo` (pages with a broken layer are re-read), `force` (every page is re-read). Automatic indexing runs skip+redo; the manual action runs force.
+
+Page routing, in `parsers.py`:
+1. `is_scanned(page)`: a page is a scan when one image covers at least half of the page area (`page.get_image_info()` bboxes). Digital pages are never sent to OCR unless forced; a logo-only cover page with little text is still treated as text.
+2. `text_quality(text) -> float` in `[0, 1]`: runs of three or more dots are removed first (table-of-contents leaders are not garbage), then the share of good tokens among whitespace tokens of two or more characters, with these rmgarbage-style rules marking a token bad: longer than 40 characters; four or more identical characters in a row; fewer than half of its characters alphanumeric; Cyrillic and Latin letters mixed in one token. If more than 30 % of the tokens are single letters (character-separated text), the score is capped at 0.5. Pages with fewer than 5 tokens score 1.0 and are decided by the 20-character rule as now.
+3. A page goes to OCR when its text has fewer than 20 characters (any page, as now), or when it is scanned and `text_quality < OCR_QUALITY_MIN` (constant, 0.8). `# ponytail: fixed threshold, calibrate on real scans; a setting only if users ask`.
+4. `parse_pdf(path, cfg, parse_page, *, force_ocr=False, on_page=None)`; `on_page(done, total, via_ocr)` is called once with `done = 0` before the first page (so the total is known before a slow first OCR call) and then after every page.
+
+Limits of the heuristic, stated up front: it catches mojibake, symbol soup, mixed scripts and character-separated text. It cannot catch a wrong but well-formed word (`ДОКУМЕНТІГ`) without a dictionary; that is what the manual force mode is for.
+
+Progress and record, in `db.py` and `index.py`:
+- `documents` gets `pages_done INTEGER` and `ocr_pages INTEGER` (added by `ALTER TABLE` on existing databases, same pattern as `sha256`). `pages` is set to the total at the start of parsing, not at the end.
+- `index_document(..., force_ocr=False)` passes `on_page` that writes `pages_done` and counts OCR'd pages; the existing cancel check runs before every OCR call. At the end `ocr_pages` is stored. The final `pages` is the total page count for PDFs (DOCX and TXT have one page), so `pages_done` never exceeds `pages`.
+- `index.reindex(conn, cfg, document_id, force_ocr=True, ...)`: `delete_chunks`, status `pending`, `pages_done` 0, then `index_document`.
+- Manual run: `db.delete_chunks(conn, document_id)` (chunks, FTS rows and vec rows), status back to `pending`, `pages_done` 0, then `index_document(force_ocr=True)` in the background.
+
+API, in `api.py`: `POST /workspaces/{ws}/documents/{id}/ocr` → 202 with the document row; 404 for unknown; 409 while the document is `pending`. `GET .../documents` already returns the new columns.
+
+UI, in `index.html`:
+- Pending row: the amber dot keeps pulsing; a small pencil-colored `34 / 170` appears after the name while `pages` is known; the tooltip says `Indexing, page 34 of 170`.
+- Indexed row: tooltip `Indexed` or `Indexed, 12 pages via OCR`.
+- Row action: a scan icon button (aria-label `Run OCR`) next to the × on hover. It opens a confirm dialog: `Run OCR on <name>? All 170 pages are sent to the parse model, about 5 minutes.` (minutes = pages / 40, rounded up) with Run OCR and Cancel. The row returns to pending and polling resumes.
+
+Rate limit consequence: force mode on a 170-page document is 170 parse requests plus about 6 embed requests, about 4.5 minutes at 40 rpm, and it blocks nothing else except the shared throttle.
+
+### 9.3 Tests (= requirements)
+
+| Module | Tests |
+|---|---|
+| parsers.py | `test_text_quality_clean_page_scores_high`, `test_text_quality_mixed_script_and_symbol_soup_scores_low`, `test_text_quality_char_separated_text_capped`, `test_is_scanned_requires_image_over_half_page`, `test_scanned_page_with_bad_text_layer_goes_to_ocr`, `test_digital_page_with_bad_text_is_not_ocred`, `test_force_ocr_reads_every_page`, `test_on_page_reports_progress_and_ocr_flag` |
+| db.py | `test_schema_adds_progress_columns_to_existing_db`, `test_set_document_progress`, `test_delete_chunks_removes_fts_and_vec_rows` |
+| index.py | `test_index_sets_total_pages_before_parsing`, `test_index_records_pages_done_and_ocr_pages`, `test_force_ocr_reindex_replaces_chunks`, cancel tests keep passing |
+| api.py | `test_run_ocr_route_resets_and_reindexes`, `test_run_ocr_conflict_while_pending`, `test_run_ocr_unknown_document_404` |
+| UI | `test_pending_row_shows_page_progress`, `test_indexed_row_tooltip_counts_ocr_pages`, `test_run_ocr_button_confirms_then_row_goes_pending` |
+| live | `test_live_parse_reads_ukrainian_scanned_page`: render page 1 of a Ukrainian scan to PNG, call `parse_page`, assert the expected heading words; records the DESIGN caveat as verified |
+
+### 9.4 Phases
+
+| # | Step | Deliverable |
+|---|---|---|
+| 1 | Quality heuristic and routing | `text_quality`, `is_scanned`, `parse_pdf` modes and `on_page` |
+| 2 | Progress and record | schema columns, `set_document_progress`, `delete_chunks`, `index_document` wiring |
+| 3 | Manual run | route, row action, confirm dialog, progress in the row |
+| 4 | Calibration and live check | heuristic measured over the three НАЕК standards (433 pages), live test, keep-better rule, LaTeX cleanup, caveats |
+
+Calibration on 2026-10-28 over the three НАЕК standards (433 pages, kept outside the repo in `../test_pdf_docs/`): every page passes the image gate; median score 1.0, 10th percentile 0.93 to 0.99; 9 pages (2 %) score below 0.8: figure pages full of symbol soup and a cover page with spaced letters, which is where OCR helps. Table-of-contents pages scored 0.8 before the dot-leader rule and 1.0 after it. Threshold stays 0.8.
+
+### 9.5 Live results (2026-10-28)
+
+`test_live_parse_reads_ukrainian_scanned_page` passed on page 10 of СОУ НАЕК 160 (body text): the parse model's output scores 0.99 against the text layer's 1.00, same length. The eleven probe pages (nine flagged plus two references):
+
+| Page | Text layer | Parse model | Note |
+|---|---|---|---|
+| 160 p10 (body) | 1.00, 2874 ch | 0.99, 2837 ch | match |
+| 158 p4 (contents) | 1.00 | 0.96 | not flagged after the dot-leader rule |
+| 158 p97, p98, p108; 159 p93, p100, p122 (tables, forms) | 0.50 | 0.71 to 0.85 | tables returned as LaTeX `tabular`; cell text correct, some Latin look-alikes (`COV HAEK` for `СОУ НАЕК`) |
+| 158 p122 (large table) | 0.50, 4984 ch | 1.00, 17 ch | the model returned only the running header: blind replacement would lose the page |
+| 160 p1 (cover) | 0.50 (spaced letters) | 0.67 | mixed-script look-alikes in the title |
+
+Consequences built into phase 4: in redo mode the OCR text replaces the layer only when it is at least half as long and scores higher; the no-text and force cases replace unconditionally. LaTeX table markup from the model is flattened to `cell | cell` rows in `nvidia._clean`. Known limit: the model sometimes writes Latin look-alike letters inside Ukrainian words; the quality score sees those as mixed script, which is why OCR output scores below 1.0.
 
 ## Sources
 
@@ -266,6 +338,11 @@ Local models, translation layer, images in answers, document editing, multi-user
 - https://pywebview.flowrl.com/guide/freezing.html — PyInstaller / py2app
 - https://parsebridge.com/blog/pymupdf-license/ — PyMuPDF AGPL
 - https://www.nutrient.io/blog/extract-text-from-pdf-pymupdf/ — scanned PDF detection with PyMuPDF
-- https://pyinstaller.org/en/stable/spec-files.html — spec file: datas, binaries, hiddenimports, excludes, macOS BUNDLE
+- https://pyinstaller.org/en/stable/spec-files.html — spec file: datas, binaries, hiddenimports, excludes
+- https://pyinstaller.org/en/stable/operating-mode.html — one-file mode unpacks to a temp folder at start
 - https://github.com/pyinstaller/pyinstaller-hooks-contrib — community hooks exist for pymupdf, uvicorn, webview, pydantic; none for sqlite_vec
 - https://deepwiki.com/git-liu835/codex-cn-bridge/4.1-backend-build-and-pyinstaller-packaging — FastAPI + uvicorn PyInstaller build example
+- https://github.com/mothercoremasterchief-prog/ocr-bench — OCR quality without ground truth: gibberish ratio, single-letter ratio, char-separated text
+- https://github.com/erl-ang/interactive-ocr — rmgarbage heuristics (Taghva et al.) for OCR quality without ground truth
+- https://ocrmypdf.readthedocs.io/en/latest/cookbook.html — skip / redo / force OCR modes; redo replaces only OCR text, force rasterizes all pages
+- https://getsearchablepdf.com/blog/force-ocr-fix-bad-text-layer.html — symptoms of a bad text layer and when to force OCR
