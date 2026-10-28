@@ -29,7 +29,8 @@
   ul { list-style: none; padding: 0; margin: 0; }
   li { padding: 6px 8px; cursor: pointer; display: flex; gap: 8px; align-items: center; border-left: 2px solid transparent; }
   li.selected { background: var(--paper); border-left-color: var(--inkblue); }
-  .status { color: var(--pencil); margin-left: auto; }
+  .name, .source-head { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status { flex: none; color: var(--pencil); margin-left: auto; }
   .status::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
                     margin-right: 5px; background: var(--pencil); }
   li[data-status="indexed"] .status::before { background: var(--ok); }
@@ -190,7 +191,10 @@ async function loadDocuments() {
   const ul = $("#documents");
   ul.replaceChildren();
   for (const d of docs) {
-    const li = el("li", "", d.name);
+    const li = el("li");
+    const nm = el("span", "name", d.name);
+    nm.title = d.name;
+    li.append(nm);
     li.dataset.id = d.id;
     li.dataset.status = d.status;
     if (d.status === "failed") li.title = d.error || "failed";
@@ -292,8 +296,9 @@ function renderSources(citations) {
     const d = el("div", "source");
     d.dataset.n = c.n;
     const head = el("div", "source-head");
+    head.title = c.document_name;
     head.append(el("strong", "", `[${c.n}] ${c.document_name}, p.${c.page}`));
-    d.append(head, el("pre", "", c.text));
+    d.append(head, el("pre", "", c.text.replace(/([^\n])\n(?!\n)/g, "$1 ")));
     box.append(d);
   }
 }

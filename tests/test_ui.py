@@ -126,3 +126,28 @@ def test_session_select_hidden_until_a_chat_exists(page, server):
     expect(page.locator("#sessions")).to_be_hidden()
     page.click("#session-new")
     expect(page.locator("#sessions")).to_be_visible()
+
+
+def test_source_passage_joins_single_line_breaks(page, server):
+    new_ws(page, server)
+    upload(page, "a.txt", b"Kyiv is\nthe capital\n\nSecond paragraph")
+    expect(page.locator("#documents li .status")).to_have_text("indexed")
+    page.click("#session-new")
+    expect(page.locator("#sessions option")).to_have_count(1)
+    page.fill("#question", "What is the capital?")
+    page.press("#question", "Enter")
+    expect(page.locator(".msg.assistant .content")).to_have_text("Kyiv [1]")
+    # to_have_text normalizes whitespace, so compare the raw textContent
+    pre = page.locator("#sources .source pre")
+    expect(pre).to_have_count(1)
+    assert pre.evaluate("e => e.textContent") == "Kyiv is the capital\n\nSecond paragraph"
+
+
+def test_long_document_name_is_ellipsized_with_full_name_in_tooltip(page, server):
+    new_ws(page, server)
+    name = "x" * 80 + ".txt"
+    upload(page, name, b"Kyiv is the capital")
+    el = page.locator("#documents li .name")
+    expect(el).to_have_attribute("title", name)
+    assert el.evaluate("e => getComputedStyle(e).textOverflow") == "ellipsis"
+    assert el.evaluate("e => e.scrollWidth > e.clientWidth")
