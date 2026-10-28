@@ -106,3 +106,23 @@ def test_failed_document_shows_error(page, server):
     row = page.locator("#documents li", has_text="b.xyz")
     expect(row.locator(".status")).to_have_text("failed")
     assert page.locator("#documents li", has_text="b.xyz").get_attribute("title")
+
+
+def test_theme_follows_os_by_default_and_manual_switch_persists(page, server):
+    page.emulate_media(color_scheme="dark")
+    page.goto(server)
+    paper = lambda: page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--paper').trim()")
+    assert paper() == "#242320"          # dark token from the OS
+    page.click('#theme [value="light"]')
+    assert paper() == "#F8F7F3"          # manual override wins
+    page.reload()
+    assert paper() == "#F8F7F3"          # persisted
+    page.click('#theme [value="system"]')
+    assert paper() == "#242320"          # back to the OS
+
+
+def test_session_select_hidden_until_a_chat_exists(page, server):
+    new_ws(page, server)
+    expect(page.locator("#sessions")).to_be_hidden()
+    page.click("#session-new")
+    expect(page.locator("#sessions")).to_be_visible()

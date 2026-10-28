@@ -3,47 +3,114 @@
 <head>
 <meta charset="utf-8">
 <title>LocalRAG</title>
+<script>try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <style>
+  :root { --desk: #ECEAE4; --paper: #F8F7F3; --ink: #26241F; --pencil: #6F6B62; --rule: #D6D3CB;
+          --inkblue: #2B4C7E; --marker: #F2E7A1; --red: #9B3B2E; --ok: #3E6B48;
+          --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+          --sans: -apple-system, "Segoe UI", system-ui, sans-serif; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --desk: #1A1917; --paper: #242320; --ink: #E8E4DA; --pencil: #9A958A; --rule: #3A3832;
+    --inkblue: #8FB0E0; --marker: #5A4F1E; --red: #E08B7C; --ok: #8DBF97; } }
+  :root[data-theme="dark"] {
+    --desk: #1A1917; --paper: #242320; --ink: #E8E4DA; --pencil: #9A958A; --rule: #3A3832;
+    --inkblue: #8FB0E0; --marker: #5A4F1E; --red: #E08B7C; --ok: #8DBF97; }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; height: 100vh; display: grid; grid-template-columns: 260px 1fr 340px;
-         font: 14px system-ui, sans-serif; color: #222; background: #fff; }
-  .col { overflow: auto; padding: 12px; border-right: 1px solid #ddd; }
-  #centre { display: flex; flex-direction: column; }
-  h2 { font-size: 13px; text-transform: uppercase; color: #666; margin: 16px 0 6px; }
+  body { margin: 0; height: 100vh; display: grid; grid-template-columns: 240px 1fr 320px;
+         font: 13px/1.4 var(--sans); color: var(--ink); background: var(--desk); }
+  .col { overflow: auto; padding: 16px; min-height: 0; }
+  #left { display: flex; flex-direction: column; border-right: 1px solid var(--rule); }
+  #sources-col { border-left: 1px solid var(--rule); }
+  #footer { margin-top: auto; padding-top: 16px; display: flex; justify-content: space-between; align-items: center; }
+  h2 { font: 600 12px/1.4 var(--sans); color: var(--pencil); margin: 20px 0 8px; }
+  .col > h2:first-child { margin-top: 0; }
   ul { list-style: none; padding: 0; margin: 0; }
-  li { padding: 4px 6px; border-radius: 4px; cursor: pointer; display: flex; gap: 6px; }
-  li.selected { background: #dde8ff; }
-  .status { color: #666; margin-left: auto; }
-  #messages { flex: 1; overflow: auto; }
-  .msg { margin: 8px 0; padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; }
-  .msg.user { background: #eef; }
-  .msg.assistant { background: #f5f5f5; }
-  .error { color: #b00; }
-  .cite { color: #2050c0; cursor: pointer; }
-  .source { margin-bottom: 10px; padding: 6px; border-radius: 4px; }
-  .source.highlight { background: #fff3b0; }
-  .source pre { white-space: pre-wrap; margin: 4px 0 0; font: inherit; }
-  #question { width: 100%; height: 70px; }
-  dialog label { display: block; margin: 6px 0; }
+  li { padding: 6px 8px; cursor: pointer; display: flex; gap: 8px; align-items: center; border-left: 2px solid transparent; }
+  li.selected { background: var(--paper); border-left-color: var(--inkblue); }
+  .status { color: var(--pencil); margin-left: auto; }
+  .status::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+                    margin-right: 5px; background: var(--pencil); }
+  li[data-status="indexed"] .status::before { background: var(--ok); }
+  li[data-status="failed"] .status::before { background: var(--red); }
+  li[data-status="failed"] .status { color: var(--red); }
+  .doc-delete { border: 0; background: none; padding: 0 4px; color: var(--pencil); visibility: hidden; }
+  li:hover .doc-delete, li:focus-within .doc-delete { visibility: visible; }
+  .empty { font: 14px/1.5 var(--serif); color: var(--pencil); margin: 12px 0 0; }
+  #messages .empty { margin: 0; }
+  #sessions:empty { display: none; }
+  button, input, select, textarea { font: 13px/1.4 var(--sans); color: var(--ink); background: var(--paper);
+    border: 1px solid var(--rule); border-radius: 3px; padding: 6px 10px; }
+  button, .file-btn { cursor: pointer; }
+  .primary { border-color: var(--ink); }
+  :focus-visible { outline: 2px solid var(--inkblue); outline-offset: 2px; }
+  #ws-form { display: flex; gap: 8px; margin-top: 8px; }
+  #ws-name { flex: 1; min-width: 0; }
+  .files { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
+                     clip-path: inset(50%); white-space: nowrap; }
+  .file-btn { border: 1px solid var(--rule); border-radius: 3px; padding: 6px 10px; background: var(--paper); }
+  #upload:focus-visible + .file-btn { outline: 2px solid var(--inkblue); outline-offset: 2px; }
+  #file-count { color: var(--pencil); }
+  #theme { display: flex; }
+  #theme button { border-radius: 0; margin-left: -1px; padding: 4px 8px; }
+  #theme button:first-child { border-radius: 3px 0 0 3px; }
+  #theme button:last-child { border-radius: 0 3px 3px 0; }
+  #theme button[aria-pressed="true"] { background: var(--desk); border-color: var(--inkblue); color: var(--inkblue); position: relative; }
+  #centre { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+  #topbar { height: 44px; flex: none; display: flex; justify-content: space-between; align-items: center;
+            padding: 0 16px; border-bottom: 1px solid var(--rule); }
+  #messages { flex: 1; overflow: auto; margin: 16px; padding: 20px 24px; background: var(--paper);
+              border: 1px solid var(--rule); border-radius: 2px; }
+  .msg { white-space: pre-wrap; }
+  .msg.user { font-weight: 600; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--rule); }
+  .msg.user:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+  .msg.assistant { font: 15px/1.55 var(--serif); max-width: 68ch; margin-top: 8px; }
+  .error { color: var(--red); }
+  .cite { color: var(--inkblue); text-decoration: none; cursor: pointer; vertical-align: 0.15em; font-size: 0.85em; }
+  details.thinking summary { font: 12px/1.4 var(--sans); color: var(--pencil); cursor: pointer; }
+  details.thinking pre { white-space: pre-wrap; font: 12px/1.4 var(--sans); color: var(--pencil); }
+  #ask-form { flex: none; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: stretch; margin: 0 16px 16px; }
+  #question { resize: none; min-height: 44px; max-height: 160px; padding: 10px 12px; }
+  .source { margin-bottom: 16px; }
+  .source pre { white-space: pre-wrap; margin: 4px 0 0; padding: 2px 4px; font: 15px/1.55 var(--serif); }
+  .source.highlight pre { background: var(--marker); }
+  @media (prefers-reduced-motion: no-preference) { li, .source pre { transition: background-color .15s; } }
+  dialog { background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 3px; padding: 20px; width: 360px; }
+  dialog form { display: flex; flex-direction: column; gap: 10px; }
+  dialog label { display: flex; flex-direction: column; gap: 4px; }
+  dialog label.check { flex-direction: row; align-items: center; }
+  dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
 </style>
 </head>
 <body>
 <div class="col" id="left">
   <h2>Workspaces</h2>
   <ul id="workspaces"></ul>
-  <form id="ws-form"><input id="ws-name" placeholder="New workspace"> <button id="ws-create">Create</button></form>
+  <p class="empty" id="ws-empty" hidden>Create a workspace to start.</p>
+  <form id="ws-form"><input id="ws-name" placeholder="New workspace"><button id="ws-create" class="primary">Create</button></form>
   <h2>Documents</h2>
   <ul id="documents"></ul>
-  <input type="file" id="upload" multiple> <button id="upload-btn">Upload</button>
-  <h2></h2>
-  <button id="settings-btn">Settings</button>
+  <p class="empty" id="docs-empty" hidden>Add documents to this workspace.</p>
+  <div class="files">
+    <input type="file" id="upload" multiple class="visually-hidden"><label for="upload" class="file-btn">Choose files</label>
+    <span id="file-count"></span>
+    <button id="upload-btn" class="primary">Upload</button>
+  </div>
+  <div id="footer">
+    <button id="settings-btn">Settings</button>
+    <div id="theme" role="group" aria-label="Theme">
+      <button type="button" value="system">System</button><button type="button" value="light">Light</button><button type="button" value="dark">Dark</button>
+    </div>
+  </div>
 </div>
 <div class="col" id="centre">
-  <div><select id="sessions"></select> <button id="session-new">New chat</button></div>
+  <div id="topbar"><select id="sessions"></select><button id="session-new">New chat</button></div>
   <div id="messages"></div>
-  <form id="ask-form"><textarea id="question"></textarea><button id="ask">Ask</button></form>
+  <form id="ask-form"><textarea id="question" placeholder="Ask about the documents…"></textarea><button id="ask" class="primary">Ask</button></form>
 </div>
-<div class="col" id="sources"></div>
+<div class="col" id="sources-col"><h2>Sources</h2><div id="sources"></div></div>
 
 <dialog id="settings">
   <form method="dialog">
@@ -52,10 +119,13 @@
     <label>Embed model <input name="embed_model"></label>
     <label>Rerank model <input name="rerank_model"></label>
     <label>Parse model <input name="parse_model"></label>
-    <label><input type="checkbox" name="rerank"> Rerank</label>
+    <label class="check"><input type="checkbox" name="rerank"> Rerank</label>
     <label>Reasoning effort
       <select name="reasoning_effort"><option>none</option><option>high</option><option>max</option></select></label>
-    <button id="settings-save" value="save">Save</button>
+    <div class="actions">
+      <button value="cancel" formmethod="dialog">Cancel</button>
+      <button id="settings-save" value="save" class="primary">Save</button>
+    </div>
   </form>
 </dialog>
 
@@ -93,6 +163,7 @@ async function loadWorkspaces() {
     li.onclick = () => selectWorkspace(w.id);
     ul.append(li);
   }
+  $("#ws-empty").hidden = list.length > 0;
 }
 
 async function selectWorkspace(id, sessionId = null) {
@@ -121,12 +192,14 @@ async function loadDocuments() {
   for (const d of docs) {
     const li = el("li", "", d.name);
     li.dataset.id = d.id;
+    li.dataset.status = d.status;
     if (d.status === "failed") li.title = d.error || "failed";
-    const del = el("button", "doc-delete", "x");
+    const del = el("button", "doc-delete", "×");
     del.onclick = async () => { await api("DELETE", `/workspaces/${state.ws}/documents/${d.id}`); loadDocuments(); };
     li.append(el("span", "status", d.status), del);
     ul.append(li);
   }
+  $("#docs-empty").hidden = docs.length > 0;
   clearTimeout(pollTimer);
   if (docs.some((d) => d.status === "pending")) pollTimer = setTimeout(loadDocuments, 1500);
 }
@@ -138,7 +211,13 @@ $("#upload-btn").onclick = async () => {
   for (const f of files) fd.append("files", f);
   await api("POST", `/workspaces/${state.ws}/documents`, fd);
   $("#upload").value = "";
+  $("#file-count").textContent = "";
   loadDocuments();
+};
+
+$("#upload").onchange = () => {
+  const n = $("#upload").files.length;
+  $("#file-count").textContent = n ? `${n} file${n > 1 ? "s" : ""} chosen` : "";
 };
 
 // Sessions
@@ -198,7 +277,9 @@ function messageEl(msg) {
 }
 
 function renderMessages() {
-  $("#messages").replaceChildren(...state.messages.map(messageEl));
+  const box = $("#messages");
+  box.replaceChildren(...state.messages.map(messageEl));
+  if (!state.messages.length) box.append(el("p", "empty", state.session ? "Ask a question about the documents in this workspace." : "Start a new chat."));
   $("#messages").scrollTop = $("#messages").scrollHeight;
   const last = [...state.messages].reverse().find((m) => m.role === "assistant");
   renderSources(last && last.citations);
@@ -210,7 +291,9 @@ function renderSources(citations) {
   for (const c of citations || []) {
     const d = el("div", "source");
     d.dataset.n = c.n;
-    d.append(el("strong", "", `[${c.n}] ${c.document_name}, p.${c.page}`), el("pre", "", c.text));
+    const head = el("div", "source-head");
+    head.append(el("strong", "", `[${c.n}] ${c.document_name}, p.${c.page}`));
+    d.append(head, el("pre", "", c.text));
     box.append(d);
   }
 }
@@ -293,7 +376,17 @@ $("#settings-save").onclick = async (e) => {
   $("#settings").close();
 };
 
+// Theme
+function applyTheme(t) {
+  if (t === "system") { document.documentElement.removeAttribute("data-theme"); try { localStorage.removeItem("theme"); } catch (e) {} }
+  else { document.documentElement.dataset.theme = t; remember("theme", t); }
+  for (const b of document.querySelectorAll("#theme button")) b.setAttribute("aria-pressed", String(b.value === t));
+}
+for (const b of document.querySelectorAll("#theme button")) b.onclick = () => applyTheme(b.value);
+applyTheme(recall("theme") || "system");
+
 // Start
+renderMessages();
 (async () => {
   await loadWorkspaces();
   const ws = Number(recall("ws"));
