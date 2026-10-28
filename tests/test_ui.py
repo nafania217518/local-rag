@@ -382,3 +382,23 @@ def test_settings_button_is_a_gear(page, server):
     expect(page.locator("#settings-btn svg")).to_have_attribute("data-icon", "gear")
     expect(page.locator("#session-new svg")).to_have_attribute("data-icon", "plus")
     expect(page.locator("#ws-add svg")).to_have_attribute("data-icon", "plus")
+
+
+def test_enter_in_workspace_dialog_creates_workspace(page, server):
+    name = f"enter-{uuid.uuid4().hex[:8]}"
+    page.goto(server)
+    page.click("#ws-add")
+    page.fill("#ws-name", name)
+    page.press("#ws-name", "Enter")
+    expect(page.locator("#workspaces li.selected")).to_have_text(name)
+    expect(page.locator("#ws-dialog")).to_be_hidden()
+
+
+def test_enter_in_rename_dialog_renames_workspace(page, server):
+    name = new_ws(page, server)
+    page.locator("#workspaces li.selected button.ws-menu").click()
+    page.click("#ws-popover [data-action=rename]")
+    page.fill("#ws-name", name + "-e")
+    page.press("#ws-name", "Enter")
+    expect(page.locator("#workspaces li.selected .name")).to_have_text(name + "-e")
+    expect(page.locator("#ws-dialog")).to_be_hidden()

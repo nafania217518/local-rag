@@ -149,7 +149,7 @@
   <form method="dialog">
     <h2 id="ws-dialog-title">New workspace</h2>
     <input id="ws-name" aria-labelledby="ws-dialog-title">
-    <div class="actions"><button id="ws-cancel" value="cancel" formnovalidate>Cancel</button><button id="ws-create" value="ok" class="primary">OK</button></div>
+    <div class="actions"><button id="ws-cancel" type="button">Cancel</button><button id="ws-create" type="submit" class="primary">OK</button></div>
   </form>
 </dialog>
 <dialog id="ws-delete-dialog">
@@ -236,7 +236,8 @@ function openWsDialog(w = null) {
   $("#ws-dialog").showModal();
 }
 $("#ws-add").onclick = () => openWsDialog();
-$("#ws-create").onclick = async (e) => {
+$("#ws-cancel").onclick = () => $("#ws-dialog").close();
+$("#ws-dialog form").onsubmit = async (e) => {
   e.preventDefault();
   const name = $("#ws-name").value.trim();
   if (!name) return;
