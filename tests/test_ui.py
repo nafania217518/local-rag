@@ -76,6 +76,7 @@ def test_thinking_is_collapsed_by_default(page, server):
 
 def test_click_citation_highlights_source(page, server):
     ask(page, server)
+    expect(page.locator("#sources .source")).to_have_count(1)
     page.click(".msg.assistant .cite")
     expect(page.locator('#sources .source[data-n="1"]')).to_have_class("source highlight")
 
