@@ -237,8 +237,8 @@ Three OCR modes, named after ocrmypdf's: `skip` (pages with a usable text layer 
 
 Page routing, in `parsers.py`:
 1. `is_scanned(page)`: a page is a scan when one image covers at least half of the page area (`page.get_image_info()` bboxes). Digital pages are never sent to OCR unless forced; a logo-only cover page with little text is still treated as text.
-2. `text_quality(text) -> float` in `[0, 1]`: share of good tokens among whitespace tokens of two or more characters, with these rmgarbage-style rules marking a token bad: longer than 40 characters; four or more identical characters in a row; fewer than half of its characters alphanumeric; Cyrillic and Latin letters mixed in one token. If more than 30 % of the tokens are single letters (character-separated text), the score is capped at 0.5. Pages with fewer than 5 tokens score 1.0 and are decided by the 20-character rule as now.
-3. A scanned page goes to OCR when its text has fewer than 20 characters or `text_quality < OCR_QUALITY_MIN` (constant, 0.8 to start). `# ponytail: fixed threshold, calibrate on real scans; a setting only if users ask`.
+2. `text_quality(text) -> float` in `[0, 1]`: runs of three or more dots are removed first (table-of-contents leaders are not garbage), then the share of good tokens among whitespace tokens of two or more characters, with these rmgarbage-style rules marking a token bad: longer than 40 characters; four or more identical characters in a row; fewer than half of its characters alphanumeric; Cyrillic and Latin letters mixed in one token. If more than 30 % of the tokens are single letters (character-separated text), the score is capped at 0.5. Pages with fewer than 5 tokens score 1.0 and are decided by the 20-character rule as now.
+3. A page goes to OCR when its text has fewer than 20 characters (any page, as now), or when it is scanned and `text_quality < OCR_QUALITY_MIN` (constant, 0.8). `# ponytail: fixed threshold, calibrate on real scans; a setting only if users ask`.
 4. `parse_pdf(path, cfg, parse_page, *, force_ocr=False, on_page=None)`; `on_page(done, total, via_ocr)` is called after every page.
 
 Limits of the heuristic, stated up front: it catches mojibake, symbol soup, mixed scripts and character-separated text. It cannot catch a wrong but well-formed word (`ДОКУМЕНТІГ`) without a dictionary; that is what the manual force mode is for.
@@ -277,7 +277,7 @@ Rate limit consequence: force mode on a 170-page document is 170 parse requests 
 | 3 | Manual run | route, row action, confirm dialog, progress in the row |
 | 4 | Calibration and live check | run the heuristic over real scans (the three НАЕК standards, 433 pages, once they are back in `test_pdf_docs/`), adjust `OCR_QUALITY_MIN`, run the live test, update caveats |
 
-Calibration needs real scans in `test_pdf_docs/`; the folder is untracked and was not present on 2026-10-28 21:40 when the plan was written.
+Calibration on 2026-10-28 over the three НАЕК standards (433 pages, kept outside the repo in `../test_pdf_docs/`): every page passes the image gate; median score 1.0, 10th percentile 0.93 to 0.99; 9 pages (2 %) score below 0.8: figure pages full of symbol soup and a cover page with spaced letters, which is where OCR helps. Table-of-contents pages scored 0.8 before the dot-leader rule and 1.0 after it. Threshold stays 0.8.
 
 ## Sources
 
