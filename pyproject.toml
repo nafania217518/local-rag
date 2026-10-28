@@ -10,10 +10,20 @@ dependencies = [
     "python-docx>=1.1",
     "fastapi>=0.115",
     "python-multipart>=0.0.9",
+    "pywebview>=5",
+    "uvicorn>=0.30",
 ]
 
+[project.scripts]
+localrag = "localrag.app:main"
+
 [dependency-groups]
-dev = ["pytest>=8", "pytest-cov>=5", "respx>=0.21"]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "pytest-playwright>=0.5",
+    "respx>=0.21",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -25,7 +35,10 @@ packages = ["src/localrag"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=localrag --cov-report=term-missing --cov-fail-under=90"
-markers = ["live: calls build.nvidia.com, needs NVIDIA_API_KEY"]
+markers = [
+    "live: calls build.nvidia.com, needs NVIDIA_API_KEY",
+    "ui: browser tests with headless Chromium",
+]
 
 [tool.coverage.run]
 source = ["localrag"]

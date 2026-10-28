@@ -7,9 +7,12 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
 from localrag import chat, config, db, index, nvidia, retrieval
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 def _thread(fn):
@@ -166,4 +169,5 @@ def create_app(db_path, cfg_path, files_root, *, embed=nvidia.embed, rerank=nvid
         config.save_config(cfg, cfg_path)
         return cfg
 
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
     return app

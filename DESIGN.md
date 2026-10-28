@@ -69,7 +69,7 @@ pywebview window  ──HTTP/SSE──▶  FastAPI (uvicorn, background thread, 
                                      └── config.py     app data dir, config.json
 ```
 
-Package: `src/localrag/`. UI: `src/localrag/static/index.html` (vanilla HTML/CSS/JS, no build step). Launcher: `src/localrag/app.py` starts uvicorn in a thread, then `webview.create_window(url)`.
+Package: `src/localrag/`. UI: `src/localrag/static/index.html` (vanilla HTML/CSS/JS, no build step). Launcher: `src/localrag/app.py` picks a free localhost port, starts uvicorn in a daemon thread, waits for `/health`, then `webview.create_window(url)` and `webview.start()`; closing the window stops the server. Every blocking collaborator is injectable so the launcher has unit tests without a window.
 
 ### 4.1 Storage (local)
 
@@ -142,7 +142,7 @@ GET             /health                      also checks FTS5
 
 ### 4.6 UI (`static/index.html`)
 
-Three columns: workspaces + documents list (left), chat (centre), sources panel for the selected answer (right). Settings dialog for the API key and model names. Native file picker through `pywebview`'s `create_file_dialog`. Streaming through `fetch` + `ReadableStream`.
+Three columns: workspaces + documents list (left), chat with a session selector (centre), sources panel for the selected answer (right). Settings dialog for the API key and model names. File picker is a plain `<input type="file" multiple>` (works inside pywebview and is testable with Playwright; the native dialog is not needed). Streaming through `fetch` + `ReadableStream`. Thinking text, when present, sits in a collapsed `<details>`. Browser tests run with pytest-playwright against the FastAPI app with fake model clients.
 
 ### 4.7 Settings (`config.py`)
 

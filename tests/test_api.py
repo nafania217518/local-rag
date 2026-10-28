@@ -202,3 +202,8 @@ def test_background_runner_default_uses_thread(tmp_path, monkeypatch):
                                        embed=fake_embed, parse_page=fake_parse))
     upload(client, ws(client), ("a.txt", "x"))
     assert calls == [True, "start"]
+
+
+def test_root_serves_index_html(client):
+    r = client.get("/")
+    assert r.status_code == 200 and "<title>LocalRAG</title>" in r.text
