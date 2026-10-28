@@ -91,12 +91,12 @@ def create_app(db_path, cfg_path, files_root, *, embed=nvidia.embed, rerank=nvid
         _found(db.get_workspace(conn, ws))
         return [dict(r) for r in db.list_documents(conn, ws)]
 
-    def index_in_background(doc_id):
+    def index_in_background(doc_id, force_ocr=False):
         def run():
             conn = db.connect(db_path)
             try:
                 index.index_document(conn, config.load_config(cfg_path), doc_id,
-                                     embed=embed, parse_page=parse_page)
+                                     embed=embed, parse_page=parse_page, force_ocr=force_ocr)
             except Exception:
                 pass  # status already recorded as failed by index_document
             finally:
@@ -125,11 +125,24 @@ def create_app(db_path, cfg_path, files_root, *, embed=nvidia.embed, rerank=nvid
             index_in_background(i)
         return rows
 
-    @app.delete("/workspaces/{ws}/documents/{doc_id}", status_code=204)
-    def delete_document(ws: int, doc_id: int, conn=Conn):
+    def ws_document(conn, ws, doc_id):
         doc = _found(db.get_document(conn, doc_id))
         if doc["workspace_id"] != ws:
             raise HTTPException(404)
+        return doc
+
+    @app.post("/workspaces/{ws}/documents/{doc_id}/ocr", status_code=202)
+    def run_ocr(ws: int, doc_id: int, conn=Conn):
+        if ws_document(conn, ws, doc_id)["status"] == "pending":
+            raise HTTPException(409)
+        index.reset_document(conn, doc_id)
+        row = dict(db.get_document(conn, doc_id))
+        index_in_background(doc_id, force_ocr=True)
+        return row
+
+    @app.delete("/workspaces/{ws}/documents/{doc_id}", status_code=204)
+    def delete_document(ws: int, doc_id: int, conn=Conn):
+        doc = ws_document(conn, ws, doc_id)
         Path(doc["path"]).unlink(missing_ok=True)
         db.delete_document(conn, doc_id)
         return Response(status_code=204)

@@ -109,8 +109,12 @@ def index_document(conn, cfg, document_id, *, embed=nvidia.embed, parse_page=nvi
         raise
 
 
-def reindex(conn, cfg, document_id, *, force_ocr=False, **kw):
+def reset_document(conn, document_id):
     db.delete_chunks(conn, document_id)
     db.set_document_status(conn, document_id, "pending")
     db.set_document_progress(conn, document_id, 0)
+
+
+def reindex(conn, cfg, document_id, *, force_ocr=False, **kw):
+    reset_document(conn, document_id)
     index_document(conn, cfg, document_id, force_ocr=force_ocr, **kw)

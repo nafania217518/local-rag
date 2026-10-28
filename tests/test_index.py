@@ -225,3 +225,11 @@ def test_index_sets_total_pages_before_first_page_ocr(conn, tmp_path):
 
     index.index_document(conn, {}, doc_id, embed=_embed, parse_page=fake_parse)
     assert seen == [(2, 0)]
+
+
+def test_reset_document_clears_chunks_and_sets_pending(conn, tmp_path):
+    doc_id = _pdf_doc(conn, tmp_path, ["Hello text page with enough chars"])
+    index.index_document(conn, {}, doc_id, embed=_embed, parse_page=None)
+    index.reset_document(conn, doc_id)
+    row = db.get_document(conn, doc_id)
+    assert (row["status"], row["pages_done"], _count(conn, "chunks")) == ("pending", 0, 0)
