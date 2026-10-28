@@ -1,9 +1,7 @@
 name: CI
 on:
-  push:
-    tags: ["v*"]
-permissions:
-  contents: write
+  pull_request:
+    branches: [master]
 jobs:
   test:
     runs-on: windows-latest
@@ -19,27 +17,3 @@ jobs:
       - run: uv sync --all-groups
       - run: uv run playwright install --with-deps chromium
       - run: uv run pytest
-  build:
-    needs: test
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-      - run: uv python install 3.12
-      - run: uv sync --all-groups
-      - run: uv run pyinstaller localrag.spec --noconfirm
-      - name: Smoke test exe
-        run: |
-          dist/LocalRAG.exe --serve 8765 &
-          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8765/health && ok=1 && break; sleep 1; done
-          kill %1 || true
-          [ "$ok" = 1 ]
-      - run: 7z a dist/LocalRAG-windows-x64.zip ./dist/LocalRAG.exe
-      - run: gh release create "$GITHUB_REF_NAME" dist/LocalRAG-windows-x64.zip --generate-notes
-        env:
-          GH_TOKEN: ${{ github.token }}

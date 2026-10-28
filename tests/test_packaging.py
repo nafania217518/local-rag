@@ -31,5 +31,6 @@ def test_ci_runs_only_on_windows():
     assert "macos" not in CI and "runs-on: windows-latest" in CI
 
 
-def test_ci_publishes_windows_zip_to_release():
-    assert "LocalRAG-windows-x64.zip" in CI and "gh release" in CI and "contents: write" in CI
+def test_ci_runs_tests_only_on_pull_requests():
+    assert "pull_request:" in CI and "uv run pytest" in CI
+    assert not any(s in CI for s in ("tags:", "pyinstaller", "gh release", "contents: write"))

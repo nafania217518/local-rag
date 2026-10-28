@@ -71,7 +71,7 @@ pywebview window  ──HTTP/SSE──▶  FastAPI (uvicorn, background thread, 
 
 Package: `src/localrag/`. UI: `src/localrag/static/index.html` (vanilla HTML/CSS/JS, no build step). Launcher: `src/localrag/app.py` picks a free localhost port, starts uvicorn in a daemon thread, waits for `/health`, then `webview.create_window(url)` and `webview.start()`; closing the window stops the server. Every blocking collaborator is injectable so the launcher has unit tests without a window.
 
-Packaging: `localrag.spec` at the repo root, one-file PyInstaller build (`uv run pyinstaller localrag.spec`). Output: `dist/LocalRAG.exe` on Windows (one fat executable; on macOS the same spec gives `dist/LocalRAG`, used only for local checks, never published). The spec collects `static/`, the sqlite-vec `vec0` library (no community hook), names `webview` as a hidden import (app.py loads it through importlib), and excludes the optional PyMuPDF layout stack (`pymupdf.layout`, onnxruntime, numpy, networkx, psutil; about 170 MB and its ONNX resources are not collected). `LocalRAG --serve <port>` runs the server without a window; the CI `build` job (Windows only, on a `v*` tag) uses it to probe `/health` on the real exe, zips it as `LocalRAG-windows-x64.zip` and attaches the zip to the GitHub release of the tag. Nothing else is published. The exe is not code-signed; Windows SmartScreen will warn.
+Packaging: `localrag.spec` at the repo root, one-file PyInstaller build (`uv run pyinstaller localrag.spec`). Output: `dist/LocalRAG.exe` on Windows (one fat executable; on macOS the same spec gives `dist/LocalRAG`, used only for local checks, never published). The spec collects `static/`, the sqlite-vec `vec0` library (no community hook), names `webview` as a hidden import (app.py loads it through importlib), and excludes the optional PyMuPDF layout stack (`pymupdf.layout`, onnxruntime, numpy, networkx, psutil; about 170 MB and its ONNX resources are not collected). `LocalRAG --serve <port>` runs the server without a window; it serves as the smoke check of a build. Releases are built by hand on Windows and the zip `LocalRAG-windows-x64.zip` is attached to a GitHub release; CI runs only the test suite, on pull requests to `master`. The exe is not code-signed; Windows SmartScreen will warn.
 
 ### 4.1 Storage (local)
 
@@ -177,7 +177,7 @@ Limits to know:
 | index.py / retrieval.py / chat.py | unit, fake embed/rerank/chat functions | in-memory fakes |
 | api.py | integration with FastAPI `TestClient`, SSE parsed | fakes injected |
 | UI | browser tests with Playwright against the FastAPI server + fake NVIDIA | fakes |
-| packaging | CI job builds the one-file Windows exe and runs `/health` | real build |
+| packaging | text asserts on the spec and the workflow; the exe is checked by hand with `--serve` and `/health` | real build |
 
 Tools: `pytest`, `pytest-cov`, `respx`, `pytest-playwright`. Live NVIDIA calls are a separate opt-in test marked `live`, skipped without `NVIDIA_API_KEY`.
 
@@ -221,7 +221,7 @@ Local models, translation layer, images in answers, document editing, multi-user
 - PyInstaller only sees static imports; `importlib.import_module("webview")` needs `hiddenimports`.
 - The Windows bundle is windowed (no console); `sys.stdout` is None there, so the launcher must not print.
 - Windows bundle smoke test is only verified in CI; the local build check ran on macOS.
-- The macOS build was dropped: CI tests and builds on Windows only, and the release holds one zip with a one-file exe. A one-file exe unpacks itself into a temp folder on every start, so launch is slower than the one-folder build and antivirus may scan it; acceptable for one user per machine.
+- The macOS build was dropped, then the CI build too: CI runs the tests on Windows on pull requests; the release zip with the one-file exe is built by hand. A one-file exe unpacks itself into a temp folder on every start, so launch is slower than the one-folder build and antivirus may scan it; acceptable for one user per machine.
 - Remote default branch is `master`. Each phase branch was cut from the previous phase branch, because `master` holds only the initial commit until the phases are merged.
 
 ## 9. Feature: OCR pass for scanned documents
