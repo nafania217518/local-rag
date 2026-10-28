@@ -1,0 +1,13 @@
+# Builds the Windows x64 one-file exe on any Docker host (Wine + Windows Python 3.12).
+# Usage: docker build -f Dockerfile.windows --output dist/windows-x64 .
+#   -> dist/windows-x64/LocalRAG.exe
+FROM --platform=linux/amd64 tobix/pywine:3.12 AS build
+WORKDIR /src
+COPY pyproject.toml localrag.spec ./
+COPY src ./src
+# numpy>=2.2.2 calls ucrtbase crealf, unimplemented in this image's Wine 9; numpy is excluded from the exe anyway
+RUN umask 0 && xvfb-run sh -c "wine pip install --no-warn-script-location . 'numpy<2.2.2'; wineserver -w"
+RUN xvfb-run sh -c "wine pyinstaller localrag.spec --noconfirm; wineserver -w"
+
+FROM scratch AS export
+COPY --from=build /src/dist/LocalRAG.exe /
