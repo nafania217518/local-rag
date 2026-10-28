@@ -126,8 +126,20 @@ def rerank(cfg: dict, query: str, passages: list[str]) -> list[tuple[int, float]
 _MARKER = re.compile(r"</?[a-z]{2,4}>")  # nemotron-parse markers such as <tbc>, <tbe>
 
 
+_LATEX = [
+    (re.compile(r"\\(?:begin|end)\{tabular\}(?:\{[^}]*\})?"), ""),
+    (re.compile(r"\\multi(?:row|column)\{[^}]*\}\{[^}]*\}\{([^}]*)\}"), r"\1"),
+    (re.compile(r"\s*\\\\\s*"), "\n"),
+    (re.compile(r"\s*&\s*"), " | "),
+    (re.compile(r"[ \t]{2,}"), " "),
+]
+
+
 def _clean(text: str) -> str:
-    return _MARKER.sub("", text).strip()
+    text = _MARKER.sub("", text)
+    for pattern, repl in _LATEX:
+        text = pattern.sub(repl, text)
+    return text.strip()
 
 
 def parse_page(cfg: dict, image_png: bytes) -> str:

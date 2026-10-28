@@ -158,7 +158,7 @@ Limits to know:
 - FTS5 uses the `unicode61` tokenizer with `remove_diacritics 2`. It matches exact tokens in any script and does no stemming (the `porter` stemmer is English only). Inflected languages lose some keyword recall; the vector path and the reranker cover that.
 - The chat model is the only language-limited component. Every Nemotron chat model lists Western European languages, Japanese and Chinese, none lists Ukrainian. The default is `nvidia/nemotron-3.5-super-vl-120b-a12b`: despite its official list it answered Ukrainian and Russian RAG questions correctly in the live probe (see the table in section 3). The system prompt tells the model to answer in the language of the question. Lightning is the fast fallback; Qwen3-Next if it gets a free endpoint.
 - `tests/test_live_languages.py` (opt-in, needs `NVIDIA_API_KEY`): one Ukrainian question over a Ukrainian passage, one Russian, one cross-lingual (English question, Ukrainian passage). All three passed on 2026-10-28.
-- Scanned pages: `nemotron-parse` is multilingual by model card. Not yet verified on a Ukrainian or Russian scanned page.
+- Scanned pages: `nemotron-parse` verified live on 2026-10-28 on Ukrainian scans (see 9.5).
 
 ### 4.9 SOLID mapping
 
@@ -276,9 +276,23 @@ Rate limit consequence: force mode on a 170-page document is 170 parse requests 
 | 1 | Quality heuristic and routing | `text_quality`, `is_scanned`, `parse_pdf` modes and `on_page` |
 | 2 | Progress and record | schema columns, `set_document_progress`, `delete_chunks`, `index_document` wiring |
 | 3 | Manual run | route, row action, confirm dialog, progress in the row |
-| 4 | Calibration and live check | run the heuristic over real scans (the three НАЕК standards, 433 pages, once they are back in `test_pdf_docs/`), adjust `OCR_QUALITY_MIN`, run the live test, update caveats |
+| 4 | Calibration and live check | heuristic measured over the three НАЕК standards (433 pages), live test, keep-better rule, LaTeX cleanup, caveats |
 
 Calibration on 2026-10-28 over the three НАЕК standards (433 pages, kept outside the repo in `../test_pdf_docs/`): every page passes the image gate; median score 1.0, 10th percentile 0.93 to 0.99; 9 pages (2 %) score below 0.8: figure pages full of symbol soup and a cover page with spaced letters, which is where OCR helps. Table-of-contents pages scored 0.8 before the dot-leader rule and 1.0 after it. Threshold stays 0.8.
+
+### 9.5 Live results (2026-10-28)
+
+`test_live_parse_reads_ukrainian_scanned_page` passed on page 10 of СОУ НАЕК 160 (body text): the parse model's output scores 0.99 against the text layer's 1.00, same length. The eleven probe pages (nine flagged plus two references):
+
+| Page | Text layer | Parse model | Note |
+|---|---|---|---|
+| 160 p10 (body) | 1.00, 2874 ch | 0.99, 2837 ch | match |
+| 158 p4 (contents) | 1.00 | 0.96 | not flagged after the dot-leader rule |
+| 158 p97, p98, p108; 159 p93, p100, p122 (tables, forms) | 0.50 | 0.71 to 0.85 | tables returned as LaTeX `tabular`; cell text correct, some Latin look-alikes (`COV HAEK` for `СОУ НАЕК`) |
+| 158 p122 (large table) | 0.50, 4984 ch | 1.00, 17 ch | the model returned only the running header: blind replacement would lose the page |
+| 160 p1 (cover) | 0.50 (spaced letters) | 0.67 | mixed-script look-alikes in the title |
+
+Consequences built into phase 4: in redo mode the OCR text replaces the layer only when it is at least half as long and scores higher; the no-text and force cases replace unconditionally. LaTeX table markup from the model is flattened to `cell | cell` rows in `nvidia._clean`. Known limit: the model sometimes writes Latin look-alike letters inside Ukrainian words; the quality score sees those as mixed script, which is why OCR output scores below 1.0.
 
 ## Sources
 

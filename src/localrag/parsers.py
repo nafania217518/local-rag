@@ -40,10 +40,16 @@ def _nonempty(pages):
     return [(n, t) for n, t in pages if t.strip()]
 
 
-def _needs_ocr(page, text, force_ocr):
-    if force_ocr or len(text.strip()) < MIN_TEXT_CHARS:
-        return True
+def _replaces(text, force_ocr):
+    return force_ocr or len(text.strip()) < MIN_TEXT_CHARS
+
+
+def _redo(page, text):
     return is_scanned(page) and text_quality(text) < OCR_QUALITY_MIN
+
+
+def _better(ocr, layer):
+    return len(ocr) >= len(layer) / 2 and text_quality(ocr) > text_quality(layer)
 
 
 def parse_pdf(path, cfg=None, parse_page=None, *, force_ocr=False, on_page=None):
@@ -53,9 +59,12 @@ def parse_pdf(path, cfg=None, parse_page=None, *, force_ocr=False, on_page=None)
             on_page(0, len(doc), False)
         for n, page in enumerate(doc, 1):
             text = page.get_text()
-            via_ocr = bool(parse_page) and _needs_ocr(page, text, force_ocr)
+            replace = _replaces(text, force_ocr)
+            via_ocr = bool(parse_page) and (replace or _redo(page, text))
             if via_ocr:
-                text = parse_page(cfg, page.get_pixmap(dpi=RENDER_DPI).tobytes("png"))
+                ocr = parse_page(cfg, page.get_pixmap(dpi=RENDER_DPI).tobytes("png"))
+                if replace or _better(ocr, text):
+                    text = ocr
             pages.append((n, text))
             if on_page:
                 on_page(n, len(doc), via_ocr)

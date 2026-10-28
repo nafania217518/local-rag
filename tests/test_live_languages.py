@@ -50,3 +50,25 @@ def test_live_cross_lingual_english_question_over_ukrainian_passage(env):
     text, cits = ask(env, "What is the capital of Ukraine?")
     assert "Kyiv" in text
     assert cits[0]["text"] == PASSAGES[0]
+
+
+@pytest.mark.skipif(not os.environ.get("LOCALRAG_SCAN_PDF"), reason="needs LOCALRAG_SCAN_PDF")
+def test_live_parse_reads_ukrainian_scanned_page():
+    import re
+
+    import pymupdf
+
+    from localrag import parsers
+    cfg = {**config.DEFAULTS, "api_key": os.environ["NVIDIA_API_KEY"]}
+    with pymupdf.open(os.environ["LOCALRAG_SCAN_PDF"]) as doc:
+        page = doc[int(os.environ.get("LOCALRAG_SCAN_PAGE", "1")) - 1]
+        layer = page.get_text()
+        png = page.get_pixmap(dpi=parsers.RENDER_DPI).tobytes("png")
+    words = dict.fromkeys(w.casefold() for w in re.findall(r"[Ѐ-ӿ]{6,}", layer))
+    expected = sorted(words, key=len, reverse=True)[:5]
+    ocr = nvidia.parse_page(cfg, png)
+    print("expected:", expected)
+    print("quality layer:", parsers.text_quality(layer), "ocr:", parsers.text_quality(ocr))
+    print("ocr:", ocr[:300])
+    assert sum(w in ocr.casefold() for w in expected) >= 3
+    assert parsers.text_quality(ocr) >= parsers.OCR_QUALITY_MIN

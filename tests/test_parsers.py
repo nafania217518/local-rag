@@ -145,7 +145,8 @@ def test_is_scanned_requires_image_over_half_page(tmp_path):
 
 def test_scanned_page_with_bad_text_layer_goes_to_ocr(tmp_path):
     p = _scan_pdf(tmp_path / "s.pdf", ASCII_SOUP)
-    assert parsers.parse_pdf(p, {}, FakeParse()) == [(1, "OCR TEXT")]
+    clean = " ".join(["Clean readable sentence from the scanned page."] * 10)
+    assert parsers.parse_pdf(p, {}, lambda c, png: clean) == [(1, clean)]
 
 
 def test_digital_page_with_bad_text_is_not_ocred(tmp_path):
@@ -183,3 +184,18 @@ def test_on_page_is_called_with_zero_before_the_first_page(tmp_path):
     calls = []
     parsers.parse_pdf(p, on_page=lambda *a: calls.append(a))
     assert calls[0] == (0, 2, False)
+
+
+MIXED = "\n".join(" ".join(["*X)<", "hello", "#$%a", "world"]) for _ in range(8))
+
+
+def test_redo_keeps_text_layer_when_ocr_is_worse_or_much_shorter(tmp_path):
+    p = _scan_pdf(tmp_path / "r.pdf", MIXED)
+    with pymupdf.open(p) as d:
+        layer = d[0].get_text()
+    assert parsers.text_quality(layer) < parsers.OCR_QUALITY_MIN
+    good = " ".join(["clean readable words here"] * 20)
+    for ocr, want in [("short", layer), (ASCII_SOUP * 3, layer), (good, good)]:
+        calls = []
+        result = parsers.parse_pdf(p, {}, lambda c, png: ocr, on_page=lambda *a: calls.append(a))
+        assert result == [(1, want)] and calls[-1] == (1, 1, True)

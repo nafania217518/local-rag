@@ -309,3 +309,12 @@ def test_parse_page_strips_marker_tags():
     respx.post(CHAT_URL).mock(return_value=_parse_resp({"content": None, "tool_calls": [
         {"id": "c1", "type": "function", "function": {"name": "markdown_bbox", "arguments": json.dumps(pages)}}]}))
     assert nvidia.parse_page(cfg, b"png") == "Kyiv is the capital.\n\nSecond line."
+
+
+@respx.mock
+def test_parse_page_strips_latex_table_markup():
+    pages = [[{"text": r"\begin{tabular}{cc} Назва & Значення \\ Тиск & 10 МПа \\ \end{tabular}", "type": "Table"},
+              {"text": r"\multirow{2}{*}{**Умовна познака**}", "type": "Text"}]]
+    respx.post(CHAT_URL).mock(return_value=_parse_resp({"content": None, "tool_calls": [
+        {"id": "c1", "type": "function", "function": {"name": "markdown_bbox", "arguments": json.dumps(pages)}}]}))
+    assert nvidia.parse_page(cfg, b"png") == "Назва | Значення\nТиск | 10 МПа\n\n**Умовна познака**"

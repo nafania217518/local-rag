@@ -34,3 +34,6 @@
 - Windows needs WebView2 Runtime for pywebview : DESIGN.md
 - PyInstaller: webview is imported via importlib (hiddenimports), sqlite-vec has no hook (collect_dynamic_libs), the PyMuPDF 2.0 layout stack (170 MB) is excluded : DESIGN.md
 - Windows bundle has no console; the launcher must not print : DESIGN.md
+- Text-layer quality heuristic flags about 2 % of pages on real scans (figures, forms, covers); it cannot catch well-formed wrong words : DESIGN.md
+- nemotron-parse can return only the running header for a dense table page; redo mode keeps the text layer unless the OCR text is at least half as long and scores higher : DESIGN.md
+- nemotron-parse returns tables as LaTeX tabular and mixes Latin look-alikes into Cyrillic words : DESIGN.md
