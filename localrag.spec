@@ -1,5 +1,4 @@
 # -*- mode: python -*-
-import sys
 from PyInstaller.utils.hooks import collect_dynamic_libs
 
 a = Analysis(
@@ -11,8 +10,4 @@ a = Analysis(
     excludes=["pymupdf.layout", "onnxruntime", "numpy", "networkx", "psutil"],  # optional layout stack, 170 MB, unused
 )
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, exclude_binaries=True, name="LocalRAG", console=False)
-coll = COLLECT(exe, a.binaries, a.datas, name="LocalRAG")
-if sys.platform == "darwin":
-    app = BUNDLE(coll, name="LocalRAG.app", bundle_identifier="dev.localrag",
-                 info_plist={"NSPrincipalClass": "NSApplication", "NSHighResolutionCapable": True})
+exe = EXE(pyz, a.scripts, a.binaries, a.datas, name="LocalRAG", console=False)

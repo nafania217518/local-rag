@@ -34,3 +34,4 @@
 - Windows needs WebView2 Runtime for pywebview : DESIGN.md
 - PyInstaller: webview is imported via importlib (hiddenimports), sqlite-vec has no hook (collect_dynamic_libs), the PyMuPDF 2.0 layout stack (170 MB) is excluded : DESIGN.md
 - Windows bundle has no console; the launcher must not print : DESIGN.md
+- Only a Windows x64 one-file exe is published (zip on the GitHub release); one-file mode unpacks to a temp folder at every start : DESIGN.md
