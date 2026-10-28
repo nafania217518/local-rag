@@ -67,8 +67,25 @@ uv run pytest
 
 Live tests against the real NVIDIA endpoints run only when `NVIDIA_API_KEY` is set.
 
+## Build the Windows exe
+
+On any machine with Docker (macOS, Linux or Windows; an amd64 image runs under emulation on Apple silicon):
+
+```
+docker build -f Dockerfile.windows --output dist/windows-x64 .
+```
+
+The result is `dist/windows-x64/LocalRAG.exe`, a one-file build made with PyInstaller inside Wine with Windows Python 3.12. The first build pulls the `tobix/pywine` image and takes a few minutes. Zip the exe as `LocalRAG-windows-x64.zip` to publish it.
+
+On Windows itself, without Docker:
+
+```
+uv sync --all-groups
+uv run pyinstaller localrag.spec --noconfirm
+```
+
 ## Release
 
-Releases are built by hand on Windows: `uv run pyinstaller localrag.spec`, zip `dist/LocalRAG.exe` as `LocalRAG-windows-x64.zip`, and attach it to a GitHub release. CI only runs the test suite on pull requests.
+Releases are built by hand with one of the commands above and attached to a GitHub release. CI only runs the test suite on pull requests.
 
 See [DESIGN.md](DESIGN.md) for the design and the known caveats.
