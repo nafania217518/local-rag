@@ -28,14 +28,28 @@ Each document row has a scan button to force OCR on every page of that document.
 
 Download `LocalRAG-windows-x64.zip` from a [release](https://github.com/nafania217518/local-rag/releases), unzip it and start `LocalRAG.exe`. The executable is not code-signed, so Windows SmartScreen warns on first start. It needs the WebView2 Runtime, which current Windows 10 and 11 already have.
 
-### From source (macOS or Windows)
+### From source (Windows or macOS)
 
-Requires [uv](https://docs.astral.sh/uv/).
+Needs Python 3.12 or newer and a clone of this repository.
+
+With [uv](https://docs.astral.sh/uv/) (recommended; it installs its own Python if needed):
 
 ```
+pip install uv
 uv sync
 uv run localrag
 ```
+
+With plain pip in a virtual environment:
+
+```
+python -m venv .venv
+.venv\Scripts\activate      # macOS: source .venv/bin/activate
+pip install .
+localrag
+```
+
+The app needs a `sqlite3` module that can load extensions (sqlite-vec). The python.org installer on Windows and uv-managed Python have it. The Microsoft Store Python and the macOS system Python do not; if the app fails on start with a message about `enable_load_extension`, use uv.
 
 ## Setup
 
