@@ -34,3 +34,35 @@ def test_sqlite_vec_knn(tmp_path):
 def test_connect_returns_row_factory(tmp_path):
     conn = connect(tmp_path / "t.db")
     assert isinstance(conn.execute("SELECT 1 AS x").fetchone(), sqlite3.Row)
+
+
+def test_rename_workspace(tmp_path):
+    from localrag import db
+    conn = connect(tmp_path / "t.db")
+    w = db.create_workspace(conn, "a")
+    db.rename_workspace(conn, w, "b")
+    assert db.get_workspace(conn, w)["name"] == "b"
+
+
+def test_delete_session_removes_messages(tmp_path):
+    from localrag import db
+    conn = connect(tmp_path / "t.db")
+    s = db.create_session(conn, db.create_workspace(conn, "a"), "t")
+    db.add_message(conn, s, "user", "hi")
+    db.delete_session(conn, s)
+    assert db.get_session(conn, s) is None and db.list_messages(conn, s) == []
+
+
+def test_connection_usable_from_another_thread(tmp_path):
+    import threading
+    conn = connect(tmp_path / "t.db")
+    out = {}
+    def run():
+        try:
+            out["r"] = tuple(conn.execute("SELECT 1").fetchone())
+        except Exception as e:
+            out["e"] = e
+    t = threading.Thread(target=run)
+    t.start()
+    t.join()
+    assert "e" not in out and out["r"] == (1,)

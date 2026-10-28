@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY,
 
 
 def connect(path: str | os.PathLike, embed_dim: int = config.EMBED_DIM) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, check_same_thread=False)  # one connection per request, used across threadpool threads
     conn.enable_load_extension(True)
     sqlite_vec.load(conn)
     conn.enable_load_extension(False)
@@ -176,3 +176,20 @@ def get_session(conn, session_id):
 
 def get_workspace(conn, workspace_id):
     return conn.execute("SELECT * FROM workspaces WHERE id = ?", [workspace_id]).fetchone()
+
+
+def _exec(conn, sql, params):
+    with conn:
+        conn.execute(sql, params)
+
+
+def rename_workspace(conn, workspace_id, name):
+    _exec(conn, "UPDATE workspaces SET name = ? WHERE id = ?", [name, workspace_id])
+
+
+def set_session_title(conn, session_id, title):
+    _exec(conn, "UPDATE sessions SET title = ? WHERE id = ?", [title, session_id])
+
+
+def delete_session(conn, session_id):
+    _exec(conn, "DELETE FROM sessions WHERE id = ?", [session_id])  # messages cascade

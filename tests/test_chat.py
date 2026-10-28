@@ -121,3 +121,12 @@ def test_answer_does_not_store_assistant_message_when_stream_fails(env):
 def test_answer_with_no_chunks_yields_empty_citations(env):
     events = run(env, retrieve=fake_retrieve(chunks=[]))
     assert ("citations", []) in events
+
+
+def test_first_question_titles_the_session(env):
+    conn, _, _, s = env
+    q = "x" * 70
+    run(env, q)
+    assert db.get_session(conn, s)["title"] == q[:60]
+    run(env, "second")
+    assert db.get_session(conn, s)["title"] == q[:60]

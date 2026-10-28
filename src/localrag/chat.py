@@ -30,6 +30,8 @@ def answer(conn, cfg, session_id, question, *, retrieve=retrieval.retrieve,
            chat_stream=nvidia.chat_stream) -> Iterator[tuple[str, object]]:
     session = db.get_session(conn, session_id)
     history = db.list_messages(conn, session_id)
+    if not history:
+        db.set_session_title(conn, session_id, question[:60])
     db.add_message(conn, session_id, "user", question)
     chunks = retrieve(conn, cfg, session["workspace_id"], question)
     parts = []

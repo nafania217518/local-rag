@@ -80,6 +80,12 @@ def create_app(db_path, cfg_path, files_root, *, embed=nvidia.embed, rerank=nvid
         db.delete_workspace(conn, ws)
         return Response(status_code=204)
 
+    @app.put("/workspaces/{ws}")
+    def rename_workspace(ws: int, body: WorkspaceIn, conn=Conn):
+        _found(db.get_workspace(conn, ws))
+        db.rename_workspace(conn, ws, body.name)
+        return dict(db.get_workspace(conn, ws))
+
     @app.get("/workspaces/{ws}/documents")
     def list_documents(ws: int, conn=Conn):
         _found(db.get_workspace(conn, ws))
@@ -132,6 +138,12 @@ def create_app(db_path, cfg_path, files_root, *, embed=nvidia.embed, rerank=nvid
     def create_session(ws: int, body: SessionIn, conn=Conn):
         title = (body.title or "").strip() or "New chat"
         return dict(db.get_session(conn, db.create_session(conn, ws, title)))
+
+    @app.delete("/sessions/{sid}", status_code=204)
+    def delete_session(sid: int, conn=Conn):
+        _found(db.get_session(conn, sid))
+        db.delete_session(conn, sid)
+        return Response(status_code=204)
 
     @app.get("/sessions/{sid}/messages")
     def list_messages(sid: int, conn=Conn):

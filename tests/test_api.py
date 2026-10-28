@@ -207,3 +207,18 @@ def test_background_runner_default_uses_thread(tmp_path, monkeypatch):
 def test_root_serves_index_html(client):
     r = client.get("/")
     assert r.status_code == 200 and "<title>LocalRAG</title>" in r.text
+
+
+def test_put_workspace_renames(client):
+    w = ws(client, "a")
+    r = client.put(f"/workspaces/{w}", json={"name": "b"})
+    assert r.status_code == 200 and r.json()["name"] == "b" and r.json()["id"] == w
+    assert client.put("/workspaces/999", json={"name": "b"}).status_code == 404
+    assert client.put(f"/workspaces/{w}", json={"name": "  "}).status_code == 422
+
+
+def test_delete_session_route(client):
+    s = client.post(f"/workspaces/{ws(client)}/sessions", json={}).json()["id"]
+    assert client.delete(f"/sessions/{s}").status_code == 204
+    assert client.get(f"/sessions/{s}/messages").status_code == 404
+    assert client.delete(f"/sessions/{s}").status_code == 404
