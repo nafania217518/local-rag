@@ -268,3 +268,44 @@ def test_every_client_call_passes_through_throttle(monkeypatch):
     nvidia.parse_page(cfg, b"png")
     list(nvidia.chat_stream(cfg, []))
     assert len(calls) == 4
+
+
+@respx.mock
+def test_parse_page_sends_max_tokens_within_model_limit():
+    route = respx.post(CHAT_URL).mock(return_value=httpx.Response(200, json={
+        "id": "x", "object": "chat.completion", "created": 0, "model": "m",
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": ""}, "finish_reason": "stop"}]}))
+    nvidia.parse_page(cfg, b"png")
+    body = json.loads(route.calls.last.request.content)
+    assert body["max_tokens"] == nvidia.PARSE_MAX_TOKENS
+    assert body["temperature"] == 0
+
+
+def _parse_resp(message):
+    return httpx.Response(200, json={
+        "id": "x", "object": "chat.completion", "created": 0, "model": "m",
+        "choices": [{"index": 0, "message": {"role": "assistant", **message}, "finish_reason": "stop"}]})
+
+
+@respx.mock
+def test_parse_page_joins_texts_from_markdown_bbox_tool_call():
+    box = {"xmin": 0.1, "ymin": 0.07, "xmax": 0.5, "ymax": 0.09}
+    pages = [[{"bbox": box, "text": "Kyiv is the capital of Ukraine.", "type": "Text"},
+              {"bbox": box, "text": "Second line.", "type": "Text"}]]
+    respx.post(CHAT_URL).mock(return_value=_parse_resp({"content": None, "tool_calls": [
+        {"id": "c1", "type": "function", "function": {"name": "markdown_bbox", "arguments": json.dumps(pages)}}]}))
+    assert nvidia.parse_page(cfg, b"png") == "Kyiv is the capital of Ukraine.\n\nSecond line."
+
+
+@respx.mock
+def test_parse_page_returns_empty_when_no_content_and_no_tool_calls():
+    respx.post(CHAT_URL).mock(return_value=_parse_resp({"content": None}))
+    assert nvidia.parse_page(cfg, b"png") == ""
+
+
+@respx.mock
+def test_parse_page_strips_marker_tags():
+    pages = [[{"text": "<tbc>Kyiv is the capital.</tbc>", "type": "Text"}, {"text": "<tbe>Second line.", "type": "Text"}]]
+    respx.post(CHAT_URL).mock(return_value=_parse_resp({"content": None, "tool_calls": [
+        {"id": "c1", "type": "function", "function": {"name": "markdown_bbox", "arguments": json.dumps(pages)}}]}))
+    assert nvidia.parse_page(cfg, b"png") == "Kyiv is the capital.\n\nSecond line."

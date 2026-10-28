@@ -1,4 +1,6 @@
 import base64
+import json
+import re
 import threading
 import time
 from collections import deque
@@ -11,6 +13,7 @@ BASE_URL = "https://integrate.api.nvidia.com/v1"
 RERANK_URL = "https://ai.api.nvidia.com/v1/retrieval/{model}/reranking"
 EMBED_BATCH = 64
 TIMEOUT = 120.0
+PARSE_MAX_TOKENS = 3500  # hosted nemotron-parse-2.0 caps max_total_tokens at 4096
 RPM = 40  # build.nvidia.com limit, shared by all models
 MAX_ATTEMPTS = 5
 BACKOFF_BASE = 1.0
@@ -120,12 +123,26 @@ def rerank(cfg: dict, query: str, passages: list[str]) -> list[tuple[int, float]
     return sorted(ranked, key=lambda r: r[1], reverse=True)
 
 
+_MARKER = re.compile(r"</?[a-z]{2,4}>")  # nemotron-parse markers such as <tbc>, <tbe>
+
+
+def _clean(text: str) -> str:
+    return _MARKER.sub("", text).strip()
+
+
 def parse_page(cfg: dict, image_png: bytes) -> str:
     url = "data:image/png;base64," + base64.b64encode(image_png).decode()
     client = _client(cfg)
     resp = _throttled(lambda: client.chat.completions.create(
         model=cfg["parse_model"],
         messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}}]}],
-        max_tokens=8192, temperature=0,
+        max_tokens=PARSE_MAX_TOKENS, temperature=0,
     ))
-    return resp.choices[0].message.content or ""
+    msg = resp.choices[0].message
+    if msg.content:
+        return _clean(msg.content)
+    # nemotron-parse returns pages as a markdown_bbox tool call: [[{"text": ...}, ...], ...]
+    texts = [_clean(el["text"])
+             for call in msg.tool_calls or [] if call.function.name == "markdown_bbox"
+             for page in json.loads(call.function.arguments) for el in page]
+    return "\n\n".join(texts)

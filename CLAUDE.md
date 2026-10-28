@@ -28,7 +28,8 @@
 - PyMuPDF is AGPL; acceptable because the project is non-commercial : DESIGN.md
 - vec0 table fixes embedding dims; changing the embed model needs a full re-index : DESIGN.md
 - Cross-lingual retrieval needs no translation; chat model language list is the limit : DESIGN.md
-- No Nemotron chat model lists Ukrainian; default chat model is deepseek-v4-flash with reasoning_effort none : DESIGN.md
+- deepseek-v4-flash is end of life (410); default chat model is nemotron-3.5-super-vl-120b-a12b, live-tested on Ukrainian and Russian : DESIGN.md
+- nemotron-parse-2.0 hosted endpoint is 502 upstream; default parse model is nemotron-parse (v1), which returns a markdown_bbox tool call; max_tokens 3500 : DESIGN.md
 - macOS system Python is 3.9 and blocks SQLite extensions (sqlite-vec needs them); use uv Python 3.12+ : DESIGN.md
 - Windows needs WebView2 Runtime for pywebview : DESIGN.md
 - Remote default branch is master, not main : DESIGN.md

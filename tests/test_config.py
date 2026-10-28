@@ -59,3 +59,13 @@ def test_default_path_used_when_none(tmp_path, monkeypatch):
     monkeypatch.setattr(c, "config_path", lambda: tmp_path / "d" / "c.json")
     save_config({"api_key": "z"})
     assert load_config()["api_key"] == "z"
+
+
+def test_default_chat_model_is_nemotron_super_vl():
+    from localrag import config
+    assert config.DEFAULTS["chat_model"] == "nvidia/nemotron-3.5-super-vl-120b-a12b"
+
+
+def test_default_parse_model_is_nemotron_parse():
+    from localrag import config
+    assert config.DEFAULTS["parse_model"] == "nvidia/nemotron-parse"

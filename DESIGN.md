@@ -27,10 +27,10 @@ All calls use one API key (`NVIDIA_API_KEY`) as a Bearer token.
 
 | Role | Model | Endpoint | Notes |
 |---|---|---|---|
-| Chat | `deepseek-ai/deepseek-v4-flash` | `POST https://integrate.api.nvidia.com/v1/chat/completions` | 1M context, 284B MoE with 13B active, free hosted endpoint. `reasoning_effort: "none"` disables thinking (default here, fast grounded answers); `high`/`max` are a setting. `max_tokens` ≤ 16384. `stream: true` for SSE |
+| Chat | `nvidia/nemotron-3.5-super-vl-120b-a12b` | `POST https://integrate.api.nvidia.com/v1/chat/completions` | 1M context, 120B MoE with 12B active, free hosted endpoint (the backend serves the text Super 3.5 model). Live-tested 2026-10-28: correct Ukrainian and Russian answers with [n] citations in about 1 s. `reasoning_effort: "none"` accepted and disables thinking. `stream: true` for SSE |
 | Embeddings | `nvidia/nemotron-3.5-embed-8b` | `POST https://integrate.api.nvidia.com/v1/embeddings` | Max 10240 tokens per input, 4096 dims, L2-normalized. Evaluated on 34 text languages (Ukrainian and Russian included). `input_type` is required: `passage` for indexing, `query` for questions. `truncate: END` |
 | Rerank | `nvidia/nemotron-3.5-rerank-8b` | `POST https://ai.api.nvidia.com/v1/retrieval/nvidia/nemotron-3.5-rerank-8b/reranking` | Same 34 languages as the embed model. Not OpenAI-shaped: body is `{model, query:{text}, passages:[{text}], truncate:"END"}`, max 512 passages |
-| OCR / page parse | `nvidia/nemotron-parse-2.0` | `POST https://integrate.api.nvidia.com/v1/chat/completions` | One page image per request as a base64 `image_url` content part. Returns Markdown. `max_tokens` up to 8192 |
+| OCR / page parse | `nvidia/nemotron-parse` | `POST https://integrate.api.nvidia.com/v1/chat/completions` | One page image per request as a base64 `image_url` content part. Returns the page as a `markdown_bbox` tool call: a JSON list of elements with `bbox`, `text`, `type` in reading order; the client joins the texts. `max_tokens` 3500. Live-tested 2026-10-28. `nemotron-parse-2.0` is the intended successor but its hosted endpoint returned 502 upstream on every request that day; the client also accepts plain `content`, so switching back is a setting |
 
 Why parse instead of the OCR NIM: the hosted `nemoretriever-ocr-v1` endpoint is deprecated, and `nemotron-ocr-v2` returns word boxes, not reading-order text. `nemotron-parse-2.0` runs through the same chat endpoint and returns page Markdown. One client, one auth path.
 
@@ -44,13 +44,13 @@ Chat model comparison for Ukrainian, Russian and English (all hosted on the cata
 
 | Model | Ukrainian / Russian in official language list | Context | Notes |
 |---|---|---|---|
-| `deepseek-ai/deepseek-v4-flash` | No official list; top-3 on a community Ukrainian leaderboard | 1M | **Default.** Free hosted endpoint. Thinking off by default via `reasoning_effort: none`. A dated variant `deepseek-v4-flash-0731` also exists on the catalog |
+| `nvidia/nemotron-3.5-super-vl-120b-a12b` | No. Post-training: FR, DE, IT, JA, ES, ZH | 1M | **Default.** Live probe 2026-10-28: correct Ukrainian and Russian RAG answers with citations in 1 s. Backend id `nemotron-3.5-super-120b-a12b` |
+| `nvidia/nemotron-3.5-lightning-30b-a3b` | No. EN, ES, FR, DE, IT, JA | 1M | Fallback. Live probe: correct Ukrainian answer with citation in 1 s |
+| `deepseek-ai/deepseek-v4-flash` | No official list; top-3 on a community Ukrainian leaderboard | 1M | **Gone.** Catalog returns 410, end of life 2026-08-07. `deepseek-ai/deepseek-v4.1-flash` is listed but timed out twice (504, then no answer in 150 s) |
 | `qwen/qwen3-next-80b-a3b-instruct` | Yes, both (Qwen3 report, 119 languages; Russian benchmarked) | 256K | Best language evidence, but no free hosted endpoint at the time of writing (user check). Fallback if DeepSeek answers are weak in Ukrainian |
-| `nvidia/nemotron-3.5-lightning-30b-a3b` | No. EN, ES, FR, DE, IT, JA | 1M | English-only workspaces |
-| `nvidia/nemotron-3-super-120b-a12b` | No. EN, FR, DE, IT, JA, ES, ZH | 1M | Base model card adds Russian, hosted card does not |
+| `nvidia/nemotron-3-super-120b-a12b` | No. EN, FR, DE, IT, JA, ES, ZH | 1M | Live probe: 404 for this account |
 | `nvidia/nemotron-3-ultra-550b-a55b` | No. EN, FR, ES, IT, DE, JA, KO, HI, PT, ZH | 1M | Largest, slowest, no gain for these languages |
-| `nvidia/nemotron-3.5-super-vl-120b-a12b` | No. Post-training: FR, DE, IT, JA, ES, ZH | 1M | Vision model, same language set as Super |
-| `z-ai/glm-5.3-flash` | No list published. Model card tags English and Chinese only | 1M | Reasoning defaults to `max`, slow for chat. Not chosen without language evidence |
+| `z-ai/glm-5.3-flash` | No list published. Model card tags English and Chinese only | 1M | Live probe: no answer in 150 s |
 
 All model names are settings, not code. Switching needs no re-index.
 
@@ -154,7 +154,7 @@ No translation layer. The embed and rerank models map text from different langua
 
 Limits to know:
 - FTS5 uses the `unicode61` tokenizer with `remove_diacritics 2`. It matches exact tokens in any script and does no stemming (the `porter` stemmer is English only). Inflected languages lose some keyword recall; the vector path and the reranker cover that.
-- The chat model is the only language-limited component. Every Nemotron chat model lists Western European languages, Japanese and Chinese, none lists Ukrainian. The default is `deepseek-ai/deepseek-v4-flash` because it has a free hosted endpoint and ranks well on a community Ukrainian leaderboard (see the table in section 3). The system prompt tells the model to answer in the language of the question. If Ukrainian answers are weak, switch to Qwen3-Next.
+- The chat model is the only language-limited component. Every Nemotron chat model lists Western European languages, Japanese and Chinese, none lists Ukrainian. The default is `nvidia/nemotron-3.5-super-vl-120b-a12b`: despite its official list it answered Ukrainian and Russian RAG questions correctly in the live probe (see the table in section 3). The system prompt tells the model to answer in the language of the question. Lightning is the fast fallback; Qwen3-Next if it gets a free endpoint.
 - Phase 5 includes a live smoke test (opt-in, needs the API key): one Ukrainian question over a Ukrainian passage, one Russian, one cross-lingual (English question, Ukrainian passage).
 - Scanned pages: `nemotron-parse-2.0` is multilingual by model card; verify on a sample page in the target language during phase 3.
 
@@ -211,9 +211,10 @@ Local models, translation layer, images in answers, document editing, multi-user
 - macOS system Python (`/usr/bin/python3`, 3.9) blocks SQLite extensions and is too old. sqlite-vec needs `enable_load_extension`; use uv-managed Python 3.12+ everywhere, including PyInstaller builds.
 - pywebview on Windows needs the WebView2 Runtime (present on current Windows 10/11; the installer must check).
 - pywebview docs suggest py2app on macOS; PyInstaller also works and is the single tool used here.
-- No Nemotron chat model on the catalog lists Ukrainian in its hosted model card. Qwen3-Next does, but has no free hosted endpoint. DeepSeek V4 Flash is free and is the default.
+- No Nemotron chat model on the catalog lists Ukrainian in its hosted model card, yet Super VL and Lightning answered Ukrainian and Russian correctly in the live probe. Qwen3-Next lists Ukrainian but has no free hosted endpoint. DeepSeek V4 Flash is end of life (410).
+- Hosted model ids churn: DeepSeek V4 Flash disappeared within months. The chat model is a setting; the Settings dialog should show the error text from the API so a 410 is understood.
+- `nemotron-parse-2.0` hosted context is 4096 tokens; `max_tokens` above that is rejected with 400. Its hosted endpoint returned 502 upstream on 2026-10-28, so the default is `nemotron-parse` (v1), which answers as a `markdown_bbox` tool call.
 - Provider limit is 40 requests per minute for all models together. The throttle is global per process; two app instances would share nothing and could exceed it.
-- DeepSeek V4 Flash thinks by default (`reasoning_effort: high`). The app sends `none` unless the user changes the setting.
 - Remote has `master`, CLAUDE.md says `main`. Branches are created from `origin/master` until the default branch is renamed.
 
 ## Sources

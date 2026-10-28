@@ -7,10 +7,10 @@ EMBED_DIM = 4096
 
 DEFAULTS = {
     "api_key": "",
-    "chat_model": "deepseek-ai/deepseek-v4-flash",
+    "chat_model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
     "embed_model": "nvidia/nemotron-3.5-embed-8b",
     "rerank_model": "nvidia/nemotron-3.5-rerank-8b",
-    "parse_model": "nvidia/nemotron-parse-2.0",
+    "parse_model": "nvidia/nemotron-parse",
     "rerank": True,
     "reasoning_effort": "none",
 }
