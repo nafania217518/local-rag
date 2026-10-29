@@ -34,7 +34,7 @@ All calls use one API key (`NVIDIA_API_KEY`) as a Bearer token.
 
 Why parse instead of the OCR NIM: the hosted `nemoretriever-ocr-v1` endpoint is deprecated, and `nemotron-ocr-v2` returns word boxes, not reading-order text. `nemotron-parse` runs through the same chat endpoint and returns page Markdown. One client, one auth path.
 
-Rate limit: build.nvidia.com allows 40 requests per minute in total, across all models. `nvidia.py` enforces one global sliding-window throttle (`RPM = 40`, thread-safe) that every outgoing request passes through, and retries 429 and 5xx responses with exponential backoff (1, 2, 4, 8 s, or the `Retry-After` header), at most 5 attempts. The SDK's own retries are off. Consequence for ingestion: a scanned 30-page PDF costs about 31 requests (30 parse calls plus one embed batch), so about one such document per minute. The UI shows per-document status so this is visible, not silent.
+Rate limit: build.nvidia.com allows 40 requests per minute in total, across all models. `nvidia.py` enforces one global sliding-window throttle (`rpm` setting, default 40, thread-safe) that every outgoing request passes through, and retries 429 and 5xx responses with exponential backoff (1, 2, 4, 8 s, or the `Retry-After` header), at most 5 attempts. The SDK's own retries are off. Consequence for ingestion: a scanned 30-page PDF costs about 31 requests (30 parse calls plus one embed batch), so about one such document per minute. The UI shows per-document status so this is visible, not silent.
 
 The OpenAI Python SDK handles chat, embeddings and parse (`base_url="https://integrate.api.nvidia.com/v1"`, `extra_body={"input_type": ...}` for embeddings). Rerank is one `httpx.post`.
 
@@ -100,7 +100,7 @@ FTS5 is compiled into the Python 3.12+ `sqlite3` module on macOS and Windows. St
 
 1. Copy file into the files folder, insert `documents` row with `status=pending`.
 2. Parse → list of `(page, text)`:
-   - PDF: PyMuPDF `page.get_text()`. If a page has fewer than 20 characters of text, render it to PNG at 150 DPI and send it to the parse model (`parse_model` setting). Per-page decision, so mixed PDFs work.
+   - PDF: PyMuPDF `page.get_text()`. If a page has fewer than `min_text_chars` (20) characters of text, render it to PNG at `render_dpi` (150) and send it to the parse model (`parse_model` setting). Per-page decision, so mixed PDFs work.
    - DOCX: `python-docx` paragraphs and table cells, page = 1.
    - TXT/MD: whole file, page = 1.
    - Parsers are a dict `{".pdf": parse_pdf, ...}`; a new format is one new entry (open-closed).
@@ -112,10 +112,12 @@ Runs in a background thread per document. The UI polls document status.
 
 ### 4.3 Retrieval (`retrieval.py`)
 
-1. FTS5 `MATCH` on the question, top 30 (BM25 order).
-2. Embed question with `input_type=query`, sqlite-vec KNN top 30 (cosine).
-3. Reciprocal Rank Fusion (`k=60`), top 20.
-4. Rerank the 20 with `nemotron-3.5-rerank-8b`, keep top 6.
+Sizes are settings (section 4.7); defaults in brackets.
+
+1. FTS5 `MATCH` on the question, top `candidates` (30, BM25 order).
+2. Embed question with `input_type=query`, sqlite-vec KNN top `candidates` (30, cosine).
+3. Reciprocal Rank Fusion (`k=60`), top `rerank_candidates` (20).
+4. Rerank them with `nemotron-3.5-rerank-8b`, keep top `sources` (6).
 5. Return chunks with `document name`, `page`, `text`, `score`.
 
 Reranking is a setting (`rerank: true`). Off → RRF top 6.
@@ -124,7 +126,7 @@ Reranking is a setting (`rerank: true`). Off → RRF top 6.
 
 Prompt: system message with rules ("answer only from the context, cite as [n], say when the context does not contain the answer") + numbered context blocks + last 10 messages of the session + the question.
 
-Request parameters: `temperature: 0.2`, `max_tokens: 4096`, `reasoning_effort` from settings (default `none`). When reasoning is on, the stream carries `reasoning_content` deltas before `content`; the server forwards them as SSE `thinking` events and the UI shows them collapsed. `# ponytail: thinking events are forwarded raw, no token budget; add one if users turn reasoning on and answers get slow.`
+Request parameters `temperature`, `max_tokens` and `reasoning_effort` come from settings (defaults 0.2, 4096, `none`); the system prompt and the history limit (10 messages) too. When reasoning is on, the stream carries `reasoning_content` deltas before `content`; the server forwards them as SSE `thinking` events and the UI shows them collapsed. `# ponytail: thinking events are forwarded raw, no token budget; add one if users turn reasoning on and answers get slow.`
 
 Streaming: `stream=True` → FastAPI `StreamingResponse` with SSE events `token`, then one `citations` event with the chunk list, then `done`. The assistant message and its citations are saved to `messages` when the stream ends.
 
@@ -148,7 +150,32 @@ Three columns: workspaces + documents list (left), chat with a session selector 
 
 ### 4.7 Settings (`config.py`)
 
-`<app data>/config.json`: `{"api_key": "", "chat_model": "...", "embed_model": "...", "rerank_model": "...", "parse_model": "...", "rerank": true, "reasoning_effort": "none"}`. Defaults live in `config.py` only. The key is stored in plain text by the user's decision.
+`<app data>/config.json` holds every tunable. `config.DEFAULTS` in `config.py` is the single source of truth: the code reads `cfg[key]`, there are no module constants for these values, and `PUT /settings` is validated by a pydantic model generated from `DEFAULTS` (wrong type is a 422, unset and null fields are ignored). `GET /settings/defaults` feeds the "Reset to defaults" button, which fills the form except the API key and does not save. The key is stored in plain text by the user's decision.
+
+| Section | Key | Default |
+|---|---|---|
+| Connection | `api_key` | `""` |
+| Connection | `base_url` | `https://integrate.api.nvidia.com/v1` |
+| Connection | `rerank_url` | `https://ai.api.nvidia.com/v1/retrieval/{model}/reranking` |
+| Connection | `rpm` | 40 |
+| Connection | `timeout` | 120 s |
+| Models | `chat_model`, `embed_model`, `rerank_model`, `parse_model` | see section 3 |
+| Chat | `system_prompt` | the prompt in section 4.4 |
+| Chat | `temperature` | 0.2 |
+| Chat | `max_tokens` | 4096 |
+| Chat | `history_limit` | 10 |
+| Chat | `reasoning_effort` | `none` |
+| Retrieval | `rerank` | true |
+| Retrieval | `sources` | 6 |
+| Retrieval | `candidates` | 30 |
+| Retrieval | `rerank_candidates` | 20 |
+| Indexing | `chunk_size` | 1500 |
+| Indexing | `chunk_overlap` | 200 |
+| Indexing | `ocr_quality_min` | 0.8 |
+| Indexing | `min_text_chars` | 20 |
+| Indexing | `render_dpi` | 150 |
+
+Kept hardcoded: the RRF constant, retries and backoff, the embed batch size, the OCR token cap, the embedding dimension. Chunk and OCR settings apply at indexing time only: a document indexed before the change keeps its chunks until it is deleted and added again (the scan button re-indexes too, but forces OCR).
 
 ### 4.8 Languages
 
@@ -239,7 +266,7 @@ Three OCR modes, named after ocrmypdf's: `skip` (pages with a usable text layer 
 Page routing, in `parsers.py`:
 1. `is_scanned(page)`: a page is a scan when one image covers at least half of the page area (`page.get_image_info()` bboxes). Digital pages are never sent to OCR unless forced; a logo-only cover page with little text is still treated as text.
 2. `text_quality(text) -> float` in `[0, 1]`: runs of three or more dots are removed first (table-of-contents leaders are not garbage), then the share of good tokens among whitespace tokens of two or more characters, with these rmgarbage-style rules marking a token bad: longer than 40 characters; four or more identical characters in a row; fewer than half of its characters alphanumeric; Cyrillic and Latin letters mixed in one token. If more than 30 % of the tokens are single letters (character-separated text), the score is capped at 0.5. Pages with fewer than 5 tokens score 1.0 and are decided by the 20-character rule as now.
-3. A page goes to OCR when its text has fewer than 20 characters (any page, as now), or when it is scanned and `text_quality < OCR_QUALITY_MIN` (constant, 0.8). `# ponytail: fixed threshold, calibrate on real scans; a setting only if users ask`.
+3. A page goes to OCR when its text has fewer than 20 characters (any page, as now), or when it is scanned and `text_quality < ocr_quality_min` (setting, default 0.8).
 4. `parse_pdf(path, cfg, parse_page, *, force_ocr=False, on_page=None)`; `on_page(done, total, via_ocr)` is called once with `done = 0` before the first page (so the total is known before a slow first OCR call) and then after every page.
 
 Limits of the heuristic, stated up front: it catches mojibake, symbol soup, mixed scripts and character-separated text. It cannot catch a wrong but well-formed word (`ДОКУМЕНТІГ`) without a dictionary; that is what the manual force mode is for.

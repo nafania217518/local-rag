@@ -4,7 +4,7 @@ import httpx
 import pytest
 from playwright.sync_api import expect
 
-from localrag import api, app
+from localrag import api, app, config
 from test_api import fake_chat_stream, fake_embed, fake_parse, fake_rerank
 
 pytestmark = pytest.mark.ui
@@ -485,3 +485,35 @@ def test_run_ocr_cancel_sends_no_request(page, server):
     expect(page.locator("#ocr-dialog")).not_to_be_visible()
     expect(row).to_have_attribute("title", "Indexed")
     assert posts == []
+
+
+def test_settings_dialog_groups_fields_and_keeps_save_in_viewport(page, server):
+    page.goto(server)
+    page.click("#settings-btn")
+    expect(page.locator("#settings legend")).to_have_text(["Connection", "Models", "Chat", "Retrieval", "Indexing"])
+    expect(page.locator("#settings-save")).to_be_in_viewport()
+    page.click('#settings button[value="cancel"]')
+
+
+def test_settings_saves_numbers_as_numbers(page, server):
+    page.goto(server)
+    page.click("#settings-btn")
+    page.fill('#settings [name="sources"]', "4")
+    page.click("#settings-save")
+    expect(page.locator("#settings")).not_to_be_visible()
+    cfg = httpx.get(f"{server}/settings").json()
+    assert cfg["sources"] == 4 and type(cfg["sources"]) is int
+    assert cfg["temperature"] == 0.2
+
+
+def test_settings_reset_restores_defaults_but_keeps_api_key(page, server):
+    page.goto(server)
+    page.click("#settings-btn")
+    page.fill('#settings [name="api_key"]', "nvapi-keep")
+    page.fill('#settings [name="sources"]', "9")
+    page.fill('#settings [name="system_prompt"]', "custom")
+    page.click("#settings-reset")
+    expect(page.locator('#settings [name="sources"]')).to_have_value("6")
+    expect(page.locator('#settings [name="system_prompt"]')).to_have_value(config.DEFAULTS["system_prompt"])
+    expect(page.locator('#settings [name="api_key"]')).to_have_value("nvapi-keep")
+    expect(page.locator("#settings")).to_be_visible()

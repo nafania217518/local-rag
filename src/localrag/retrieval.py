@@ -1,10 +1,6 @@
 from localrag import db, nvidia
 
-FTS_K = 30
-VEC_K = 30
 RRF_K = 60
-FUSED_K = 20
-FINAL_K = 6
 
 
 def rrf(rankings: list[list[int]], k: int = RRF_K) -> list[tuple[int, float]]:
@@ -18,17 +14,17 @@ def rrf(rankings: list[list[int]], k: int = RRF_K) -> list[tuple[int, float]]:
 def retrieve(conn, cfg, workspace_id, question, *, embed=nvidia.embed, rerank=nvidia.rerank) -> list[dict]:
     if not question.strip():
         return []
-    fts_ids = [i for i, _ in db.fts_search(conn, workspace_id, question, FTS_K)]
+    fts_ids = [i for i, _ in db.fts_search(conn, workspace_id, question, cfg["candidates"])]
     qvec = embed(cfg, [question], "query")[0]
-    vec_ids = [i for i, _ in db.vec_search(conn, workspace_id, qvec, VEC_K)]
-    fused = rrf([fts_ids, vec_ids])[:FUSED_K]
+    vec_ids = [i for i, _ in db.vec_search(conn, workspace_id, qvec, cfg["candidates"])]
+    fused = rrf([fts_ids, vec_ids])[:cfg["rerank_candidates"]]
     if not fused:
         return []
     rows = db.get_chunks(conn, [i for i, _ in fused])
     if cfg["rerank"]:
-        ranked = rerank(cfg, question, [r["text"] for r in rows])[:FINAL_K]
+        ranked = rerank(cfg, question, [r["text"] for r in rows])[:cfg["sources"]]
         picked = [(rows[i], s) for i, s in ranked]
     else:
-        picked = list(zip(rows, [s for _, s in fused]))[:FINAL_K]
+        picked = list(zip(rows, [s for _, s in fused]))[:cfg["sources"]]
     keys = ("id", "document_id", "document_name", "page", "text")
     return [{**{k: r[k] for k in keys}, "score": s} for r, s in picked]

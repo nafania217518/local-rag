@@ -120,6 +120,11 @@
   dialog label { display: flex; flex-direction: column; gap: 4px; }
   dialog label.check { flex-direction: row; align-items: center; }
   dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
+  dialog#settings { width: 480px; max-width: calc(100vw - 32px); }
+  #settings form { max-height: 80vh; overflow: auto; }
+  #settings fieldset { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--rule); border-radius: 3px; }
+  #settings .actions { position: sticky; bottom: 0; background: var(--paper); padding-top: 8px; }
+  #settings .hint { font-size: 12px; opacity: 0.7; margin: 0; }
 </style>
 </head>
 <body>
@@ -172,15 +177,43 @@
 </dialog>
 <dialog id="settings">
   <form method="dialog">
-    <label>API key <input type="password" name="api_key"></label>
-    <label>Chat model <input name="chat_model"></label>
-    <label>Embed model <input name="embed_model"></label>
-    <label>Rerank model <input name="rerank_model"></label>
-    <label>Parse model <input name="parse_model"></label>
-    <label class="check"><input type="checkbox" name="rerank"> Rerank</label>
-    <label>Reasoning effort
-      <select name="reasoning_effort"><option>none</option><option>high</option><option>max</option></select></label>
+    <fieldset><legend>Connection</legend>
+      <label>API key <input type="password" name="api_key"></label>
+      <label>Base URL <input name="base_url"></label>
+      <label>Rerank URL <input name="rerank_url"></label>
+      <label>Requests per minute <input type="number" name="rpm" min="1" step="1"></label>
+      <label>Timeout, s <input type="number" name="timeout" min="1" step="any"></label>
+    </fieldset>
+    <fieldset><legend>Models</legend>
+      <label>Chat model <input name="chat_model"></label>
+      <label>Embed model <input name="embed_model"></label>
+      <label>Rerank model <input name="rerank_model"></label>
+      <label>Parse model <input name="parse_model"></label>
+    </fieldset>
+    <fieldset><legend>Chat</legend>
+      <label>System prompt <textarea name="system_prompt" rows="5"></textarea></label>
+      <label>Temperature <input type="number" name="temperature" min="0" max="2" step="0.1"></label>
+      <label>Max tokens <input type="number" name="max_tokens" min="1" step="1"></label>
+      <label>History messages <input type="number" name="history_limit" min="1" step="1"></label>
+      <label>Reasoning effort
+        <select name="reasoning_effort"><option>none</option><option>high</option><option>max</option></select></label>
+    </fieldset>
+    <fieldset><legend>Retrieval</legend>
+      <label class="check"><input type="checkbox" name="rerank"> Rerank</label>
+      <label>Sources <input type="number" name="sources" min="1" step="1"></label>
+      <label>Candidates per search <input type="number" name="candidates" min="1" step="1"></label>
+      <label>Rerank candidates <input type="number" name="rerank_candidates" min="1" step="1"></label>
+    </fieldset>
+    <fieldset><legend>Indexing</legend>
+      <label>Chunk size <input type="number" name="chunk_size" min="100" step="1"></label>
+      <label>Chunk overlap <input type="number" name="chunk_overlap" min="0" step="1"></label>
+      <p class="hint">Chunk changes apply to documents indexed after the change.</p>
+      <label>OCR quality minimum <input type="number" name="ocr_quality_min" min="0" max="1" step="0.05"></label>
+      <label>Minimum text characters <input type="number" name="min_text_chars" min="0" step="1"></label>
+      <label>Render DPI <input type="number" name="render_dpi" min="50" step="1"></label>
+    </fieldset>
     <div class="actions">
+      <button id="settings-reset" type="button">Reset to defaults</button>
       <button value="cancel" formmethod="dialog">Cancel</button>
       <button id="settings-save" value="save" class="primary">Save</button>
     </div>
@@ -511,21 +544,25 @@ $("#question").onkeydown = (e) => {
 
 // Settings
 const settingsForm = $("#settings form");
-$("#settings-btn").onclick = async () => {
-  const cfg = await api("GET", "/settings");
+function fillSettings(cfg, skip) {
   for (const input of settingsForm.elements) {
-    if (!input.name) continue;
+    if (!input.name || input.name === skip) continue;
     if (input.type === "checkbox") input.checked = !!cfg[input.name];
     else input.value = cfg[input.name] ?? "";
   }
+}
+$("#settings-btn").onclick = async () => {
+  fillSettings(await api("GET", "/settings"));
   $("#settings").showModal();
 };
+$("#settings-reset").onclick = async () => fillSettings(await api("GET", "/settings/defaults"), "api_key");
 $("#settings-save").onclick = async (e) => {
   e.preventDefault();
   const body = {};
   for (const input of settingsForm.elements) {
     if (!input.name) continue;
-    body[input.name] = input.type === "checkbox" ? input.checked : input.value;
+    body[input.name] = input.type === "checkbox" ? input.checked
+      : input.type === "number" ? input.valueAsNumber : input.value;
   }
   await api("PUT", "/settings", body);
   $("#settings").close();

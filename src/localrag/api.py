@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, create_model, field_validator
 
 from localrag import chat, config, db, index, nvidia, retrieval
 
@@ -28,6 +28,9 @@ def _not_blank(v):
 class WorkspaceIn(BaseModel):
     name: str
     _check = field_validator("name")(_not_blank)
+
+
+SettingsIn = create_model("SettingsIn", **{k: (type(v) | None, None) for k, v in config.DEFAULTS.items()})
 
 
 class SessionIn(BaseModel):
@@ -192,9 +195,13 @@ def create_app(db_path, cfg_path, files_root, *, embed=nvidia.embed, rerank=nvid
     def get_settings():
         return config.load_config(cfg_path)
 
+    @app.get("/settings/defaults")
+    def get_default_settings():
+        return config.DEFAULTS
+
     @app.put("/settings")
-    def put_settings(body: dict):
-        cfg = {**config.load_config(cfg_path), **body}
+    def put_settings(body: SettingsIn):
+        cfg = {**config.load_config(cfg_path), **body.model_dump(exclude_unset=True, exclude_none=True)}
         config.save_config(cfg, cfg_path)
         return cfg
 

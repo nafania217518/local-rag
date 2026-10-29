@@ -295,3 +295,14 @@ def test_run_ocr_route_returns_pending_row_before_background_job(tmp_path):
     jobs.pop()()
     row = client.get(f"/workspaces/{w}/documents").json()[0]
     assert (row["status"], row["ocr_pages"]) == ("indexed", 1)
+
+
+def test_settings_put_rejects_wrong_types(client):
+    assert client.put("/settings", json={"rpm": "abc"}).status_code == 422
+    assert client.put("/settings", json={"rerank": "maybe"}).status_code == 422
+    assert client.get("/settings").json() == config.DEFAULTS
+
+
+def test_settings_defaults_route_returns_defaults(client):
+    client.put("/settings", json={"sources": 3})
+    assert client.get("/settings/defaults").json() == config.DEFAULTS

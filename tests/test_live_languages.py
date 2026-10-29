@@ -63,7 +63,7 @@ def test_live_parse_reads_ukrainian_scanned_page():
     with pymupdf.open(os.environ["LOCALRAG_SCAN_PDF"]) as doc:
         page = doc[int(os.environ.get("LOCALRAG_SCAN_PAGE", "1")) - 1]
         layer = page.get_text()
-        png = page.get_pixmap(dpi=parsers.RENDER_DPI).tobytes("png")
+        png = page.get_pixmap(dpi=config.DEFAULTS["render_dpi"]).tobytes("png")
     words = dict.fromkeys(w.casefold() for w in re.findall(r"[Ѐ-ӿ]{6,}", layer))
     expected = sorted(words, key=len, reverse=True)[:5]
     ocr = nvidia.parse_page(cfg, png)
@@ -71,4 +71,4 @@ def test_live_parse_reads_ukrainian_scanned_page():
     print("quality layer:", parsers.text_quality(layer), "ocr:", parsers.text_quality(ocr))
     print("ocr:", ocr[:300])
     assert sum(w in ocr.casefold() for w in expected) >= 3
-    assert parsers.text_quality(ocr) >= parsers.OCR_QUALITY_MIN
+    assert parsers.text_quality(ocr) >= config.DEFAULTS["ocr_quality_min"]

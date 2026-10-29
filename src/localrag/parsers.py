@@ -4,9 +4,8 @@ from pathlib import Path
 import docx
 import pymupdf
 
-MIN_TEXT_CHARS = 20
-RENDER_DPI = 150
-OCR_QUALITY_MIN = 0.8
+from localrag import config
+
 MAX_TOKEN_LEN = 40
 
 
@@ -40,12 +39,12 @@ def _nonempty(pages):
     return [(n, t) for n, t in pages if t.strip()]
 
 
-def _replaces(text, force_ocr):
-    return force_ocr or len(text.strip()) < MIN_TEXT_CHARS
+def _replaces(text, force_ocr, min_chars):
+    return force_ocr or len(text.strip()) < min_chars
 
 
-def _redo(page, text):
-    return is_scanned(page) and text_quality(text) < OCR_QUALITY_MIN
+def _redo(page, text, quality_min):
+    return is_scanned(page) and text_quality(text) < quality_min
 
 
 def _better(ocr, layer):
@@ -53,16 +52,17 @@ def _better(ocr, layer):
 
 
 def parse_pdf(path, cfg=None, parse_page=None, *, force_ocr=False, on_page=None):
+    cfg = {**config.DEFAULTS, **(cfg or {})}
     pages = []
     with pymupdf.open(path) as doc:
         if on_page:
             on_page(0, len(doc), False)
         for n, page in enumerate(doc, 1):
             text = page.get_text()
-            replace = _replaces(text, force_ocr)
-            via_ocr = bool(parse_page) and (replace or _redo(page, text))
+            replace = _replaces(text, force_ocr, cfg["min_text_chars"])
+            via_ocr = bool(parse_page) and (replace or _redo(page, text, cfg["ocr_quality_min"]))
             if via_ocr:
-                ocr = parse_page(cfg, page.get_pixmap(dpi=RENDER_DPI).tobytes("png"))
+                ocr = parse_page(cfg, page.get_pixmap(dpi=cfg["render_dpi"]).tobytes("png"))
                 if replace or _better(ocr, text):
                     text = ocr
             pages.append((n, text))

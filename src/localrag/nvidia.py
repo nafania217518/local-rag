@@ -9,12 +9,8 @@ from collections.abc import Iterator
 import httpx
 import openai
 
-BASE_URL = "https://integrate.api.nvidia.com/v1"
-RERANK_URL = "https://ai.api.nvidia.com/v1/retrieval/{model}/reranking"
 EMBED_BATCH = 64
-TIMEOUT = 120.0
 PARSE_MAX_TOKENS = 3500  # hosted nemotron-parse-2.0 caps max_total_tokens at 4096
-RPM = 40  # build.nvidia.com limit, shared by all models
 MAX_ATTEMPTS = 5
 BACKOFF_BASE = 1.0
 WINDOW = 60.0
@@ -30,14 +26,14 @@ def _reset_throttle() -> None:
         _window.clear()
 
 
-def _throttle() -> None:
+def _throttle(rpm: int) -> None:
     # ponytail: per-process window; a second process would double the rate.
     while True:
         with _lock:
             now = _now()
             while _window and now - _window[0] >= WINDOW:
                 _window.popleft()
-            if len(_window) < RPM:
+            if len(_window) < rpm:
                 _window.append(now)
                 return
             wait = _window[0] + WINDOW - now
@@ -56,23 +52,23 @@ def _retry(fn):
             _sleep(int(retry_after) if retry_after.isdigit() else BACKOFF_BASE * 2 ** (attempt - 1))
 
 
-def _throttled(fn):
+def _throttled(cfg, fn):
     def call():
-        _throttle()
+        _throttle(cfg["rpm"])
         return fn()
     return _retry(call)
 
 
 def _client(cfg: dict) -> openai.OpenAI:
     # openai 3.x defaults to httpx2; pass a plain httpx client so the module uses one HTTP stack (and respx sees it).
-    return openai.OpenAI(api_key=cfg["api_key"], base_url=BASE_URL, timeout=TIMEOUT, max_retries=0,
-                         http_client=httpx.Client(timeout=TIMEOUT))
+    return openai.OpenAI(api_key=cfg["api_key"], base_url=cfg["base_url"], timeout=cfg["timeout"], max_retries=0,
+                         http_client=httpx.Client(timeout=cfg["timeout"]))
 
 
 def chat_stream(cfg: dict, messages: list[dict], reasoning_effort: str | None = None) -> Iterator[tuple[str, str]]:
     client = _client(cfg)
-    stream = _throttled(lambda: client.chat.completions.create(
-        model=cfg["chat_model"], messages=messages, stream=True, temperature=0.2, max_tokens=4096,
+    stream = _throttled(cfg, lambda: client.chat.completions.create(
+        model=cfg["chat_model"], messages=messages, stream=True, temperature=cfg["temperature"], max_tokens=cfg["max_tokens"],
         extra_body={"reasoning_effort": reasoning_effort or cfg["reasoning_effort"]},
     ))
     for chunk in stream:
@@ -94,7 +90,7 @@ def embed(cfg: dict, texts: list[str], input_type: str) -> list[list[float]]:
     vectors = []
     for i in range(0, len(texts), EMBED_BATCH):
         batch = texts[i:i + EMBED_BATCH]
-        resp = _throttled(lambda: client.embeddings.create(
+        resp = _throttled(cfg, lambda: client.embeddings.create(
             model=cfg["embed_model"], input=batch, encoding_format="float",
             extra_body={"input_type": input_type, "truncate": "END"},
         ))
@@ -109,16 +105,16 @@ def rerank(cfg: dict, query: str, passages: list[str]) -> list[tuple[int, float]
 
     def post():
         resp = httpx.post(
-            RERANK_URL.format(model=model),
+            cfg["rerank_url"].format(model=model),
             headers={"Authorization": f"Bearer {cfg['api_key']}", "Accept": "application/json"},
             json={"model": model, "query": {"text": query}, "passages": [{"text": p} for p in passages],
                   "truncate": "END"},
-            timeout=TIMEOUT,
+            timeout=cfg["timeout"],
         )
         resp.raise_for_status()
         return resp
 
-    resp = _throttled(post)
+    resp = _throttled(cfg, post)
     ranked = [(r["index"], r["logit"]) for r in resp.json()["rankings"]]
     return sorted(ranked, key=lambda r: r[1], reverse=True)
 
@@ -145,7 +141,7 @@ def _clean(text: str) -> str:
 def parse_page(cfg: dict, image_png: bytes) -> str:
     url = "data:image/png;base64," + base64.b64encode(image_png).decode()
     client = _client(cfg)
-    resp = _throttled(lambda: client.chat.completions.create(
+    resp = _throttled(cfg, lambda: client.chat.completions.create(
         model=cfg["parse_model"],
         messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}}]}],
         max_tokens=PARSE_MAX_TOKENS, temperature=0,

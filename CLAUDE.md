@@ -38,3 +38,4 @@
 - nemotron-parse can return only the running header for a dense table page; redo mode keeps the text layer unless the OCR text is at least half as long and scores higher : DESIGN.md
 - nemotron-parse returns tables as LaTeX tabular and mixes Latin look-alikes into Cyrillic words : DESIGN.md
 - Only a Windows x64 one-file exe is published (zip on a GitHub release, built by hand; CI runs tests only, on pull requests); one-file mode unpacks to a temp folder at every start : DESIGN.md
+- All tunables live in config.DEFAULTS (no module constants); chunk and OCR settings apply at indexing time only, a changed document must be deleted and added again : DESIGN.md

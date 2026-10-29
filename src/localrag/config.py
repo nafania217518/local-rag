@@ -13,6 +13,29 @@ DEFAULTS = {
     "parse_model": "nvidia/nemotron-parse",
     "rerank": True,
     "reasoning_effort": "none",
+    "base_url": "https://integrate.api.nvidia.com/v1",
+    "rerank_url": "https://ai.api.nvidia.com/v1/retrieval/{model}/reranking",
+    "rpm": 40,  # build.nvidia.com limit, shared by all models
+    "timeout": 120.0,
+    "system_prompt": (
+        "You answer questions about the user's documents.\n"
+        "- Answer only from the numbered context passages.\n"
+        "- Cite passages inline as [n] after each claim, where n is the passage number.\n"
+        "- If the context does not contain the answer, say so and do not guess.\n"
+        "- Answer in the language of the question.\n"
+        "- Be concise."
+    ),
+    "temperature": 0.2,
+    "max_tokens": 4096,
+    "history_limit": 10,
+    "sources": 6,
+    "candidates": 30,
+    "rerank_candidates": 20,
+    "chunk_size": 1500,
+    "chunk_overlap": 200,
+    "ocr_quality_min": 0.8,
+    "min_text_chars": 20,
+    "render_dpi": 150,
 }
 
 
