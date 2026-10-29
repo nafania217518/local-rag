@@ -6,7 +6,7 @@ LocalRAG is a desktop app that answers questions about your own documents. It ke
 
 - Workspaces: each workspace owns its documents and its chats.
 - Documents: PDF, DOCX and TXT. A file that is already in the workspace (same checksum) is not added twice.
-- Search: full-text search (FTS5) and vector search (sqlite-vec) merged with reciprocal rank fusion, then reranked.
+- Search: full-text search (FTS5) and vector search (sqlite-vec) merged with reciprocal rank fusion, then reranked. The chat model first paraphrases the question, so a document that uses other words is still found.
 - Answers: streamed, with numbered citations that open the source passage and page in the Sources column.
 - Languages: Ukrainian, Russian and English. A question in one language finds passages in the others.
 - Theme: follows the OS by default, with a manual light or dark switch.
@@ -53,7 +53,7 @@ The app needs a `sqlite3` module that can load extensions (sqlite-vec). The pyth
 
 ## Setup
 
-Open Settings (gear icon, bottom left) and paste your API key from [build.nvidia.com](https://build.nvidia.com). The chat, embedding, rerank and parse models can be changed there too, and so can the endpoint URLs, the rate limit, the system prompt, the retrieval sizes and the chunking and OCR thresholds. "Reset to defaults" restores everything except the API key. The free tier allows 40 requests per minute across all models; the app throttles itself to stay under it. Chunk settings apply to documents indexed after the change.
+Open Settings (gear icon, bottom left) and paste your API key from [build.nvidia.com](https://build.nvidia.com). The chat, embedding, rerank and parse models can be changed there too, and so can the endpoint URLs, the rate limit, the system prompt, question paraphrasing, the retrieval sizes and the chunking and OCR thresholds. "Reset to defaults" restores everything except the API key. The free tier allows 40 requests per minute across all models; the app throttles itself to stay under it. Chunk settings apply to documents indexed after the change.
 
 App data lives in `~/Library/Application Support/LocalRAG` on macOS and `%APPDATA%\LocalRAG` on Windows.
 

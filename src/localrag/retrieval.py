@@ -1,3 +1,5 @@
+import re
+
 from localrag import db, nvidia
 
 RRF_K = 60
@@ -11,13 +13,36 @@ def rrf(rankings: list[list[int]], k: int = RRF_K) -> list[tuple[int, float]]:
     return sorted(scores.items(), key=lambda x: (-x[1], x[0]))
 
 
-def retrieve(conn, cfg, workspace_id, question, *, embed=nvidia.embed, rerank=nvidia.rerank) -> list[dict]:
+PARAPHRASE_PROMPT = ("Write {n} different phrasings of the question below, in the same language as the question. "
+                     "One phrasing per line. No numbering, no quotes, no other text.\n\nQuestion: {question}")
+
+
+def paraphrase(cfg, question, chat_stream=nvidia.chat_stream) -> list[str]:
+    n = cfg["paraphrases"]
+    if not cfg["paraphrase"] or n < 1:
+        return []
+    try:
+        messages = [{"role": "user", "content": PARAPHRASE_PROMPT.format(n=n, question=question)}]
+        text = "".join(t for kind, t in chat_stream(cfg, messages, "none") if kind == "token")
+        out = []
+        for line in text.splitlines():
+            line = re.sub(r"^\s*(?:[-*•]|\d+[.)])?\s*", "", line).strip().strip("\"'«»“”").strip()
+            if line and line.lower() != question.strip().lower() and line not in out:
+                out.append(line)
+        return out[:n]
+    except Exception:
+        return []  # the answer runs on the original question alone
+
+
+def retrieve(conn, cfg, workspace_id, question, *, embed=nvidia.embed, rerank=nvidia.rerank,
+             chat_stream=nvidia.chat_stream) -> list[dict]:
     if not question.strip():
         return []
-    fts_ids = [i for i, _ in db.fts_search(conn, workspace_id, question, cfg["candidates"])]
-    qvec = embed(cfg, [question], "query")[0]
-    vec_ids = [i for i, _ in db.vec_search(conn, workspace_id, qvec, cfg["candidates"])]
-    fused = rrf([fts_ids, vec_ids])[:cfg["rerank_candidates"]]
+    queries = [question, *paraphrase(cfg, question, chat_stream)]
+    fts = [[i for i, _ in db.fts_search(conn, workspace_id, q, cfg["candidates"])] for q in queries]
+    vec = [[i for i, _ in db.vec_search(conn, workspace_id, v, cfg["candidates"])]
+           for v in embed(cfg, queries, "query")]
+    fused = rrf(fts + vec)[:cfg["rerank_candidates"]]
     if not fused:
         return []
     rows = db.get_chunks(conn, [i for i, _ in fused])

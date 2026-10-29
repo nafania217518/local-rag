@@ -12,6 +12,8 @@ DEFAULTS = {
     "rerank_model": "nvidia/nemotron-3.5-rerank-8b",
     "parse_model": "nvidia/nemotron-parse",
     "rerank": True,
+    "paraphrase": True,
+    "paraphrases": 2,
     "reasoning_effort": "none",
     "base_url": "https://integrate.api.nvidia.com/v1",
     "rerank_url": "https://ai.api.nvidia.com/v1/retrieval/{model}/reranking",

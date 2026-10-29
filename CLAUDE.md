@@ -39,3 +39,4 @@
 - nemotron-parse returns tables as LaTeX tabular and mixes Latin look-alikes into Cyrillic words : DESIGN.md
 - Only a Windows x64 one-file exe is published (zip on a GitHub release, built by hand; CI runs tests only, on pull requests); one-file mode unpacks to a temp folder at every start : DESIGN.md
 - All tunables live in config.DEFAULTS (no module constants); chunk and OCR settings apply at indexing time only, a changed document must be deleted and added again : DESIGN.md
+- Question paraphrasing costs one extra chat request per question (four requests per question with rerank and the answer); a failed paraphrase call falls back to the original question : DESIGN.md

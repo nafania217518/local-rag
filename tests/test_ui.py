@@ -100,6 +100,18 @@ def test_settings_dialog_saves_api_key(page, server):
     assert httpx.get(f"{server}/settings").json()["api_key"] == "nvapi-test"
 
 
+def test_settings_saves_paraphrase_toggle_and_count(page, server):
+    page.goto(server)
+    page.click("#settings-btn")
+    expect(page.locator("#settings")).to_be_visible()  # the form is filled from config right before it opens
+    page.uncheck('#settings [name="paraphrase"]')
+    page.fill('#settings [name="paraphrases"]', "3")
+    page.click("#settings-save")
+    expect(page.locator("#settings")).not_to_be_visible()
+    got = httpx.get(f"{server}/settings").json()
+    assert got["paraphrase"] is False and got["paraphrases"] == 3 and type(got["paraphrases"]) is int
+
+
 def test_failed_document_shows_error(page, server):
     new_ws(page, server)
     upload(page, "b.xyz", b"junk")

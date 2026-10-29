@@ -83,3 +83,7 @@ def test_defaults_cover_every_tunable():
         assert DEFAULTS[k] == v and type(DEFAULTS[k]) is type(v), k
     assert DEFAULTS["system_prompt"].startswith("You answer questions about the user's documents.")
     assert "[n]" in DEFAULTS["system_prompt"]
+
+
+def test_defaults_paraphrase_on_with_two_rewrites():
+    assert DEFAULTS["paraphrase"] is True and DEFAULTS["paraphrases"] == 2
