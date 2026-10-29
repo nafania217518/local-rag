@@ -2,7 +2,7 @@ import docx
 import pymupdf
 import pytest
 
-from localrag import parsers
+from localrag import config, parsers
 
 
 def _pdf(path, pages):
@@ -193,9 +193,36 @@ def test_redo_keeps_text_layer_when_ocr_is_worse_or_much_shorter(tmp_path):
     p = _scan_pdf(tmp_path / "r.pdf", MIXED)
     with pymupdf.open(p) as d:
         layer = d[0].get_text()
-    assert parsers.text_quality(layer) < parsers.OCR_QUALITY_MIN
+    assert parsers.text_quality(layer) < config.DEFAULTS["ocr_quality_min"]
     good = " ".join(["clean readable words here"] * 20)
     for ocr, want in [("short", layer), (ASCII_SOUP * 3, layer), (good, good)]:
         calls = []
         result = parsers.parse_pdf(p, {}, lambda c, png: ocr, on_page=lambda *a: calls.append(a))
         assert result == [(1, want)] and calls[-1] == (1, 1, True)
+
+
+def test_parse_pdf_uses_ocr_thresholds_from_config(tmp_path):
+    p = _pdf(tmp_path / "t.pdf", ["Hello text page"])  # 15 chars
+    fake = FakeParse()
+    assert parsers.parse_pdf(p, {"min_text_chars": 5}, fake) == [(1, "Hello text page\n")]
+    assert parsers.parse_pdf(p, {"min_text_chars": 50}, fake) == [(1, "OCR TEXT")]
+    s = _scan_pdf(tmp_path / "s.pdf", MIXED)
+    good = " ".join(["clean readable words here"] * 20)
+    fake = FakeParse()
+    parsers.parse_pdf(s, {"ocr_quality_min": 0.0}, fake)
+    assert fake.calls == []
+    assert parsers.parse_pdf(s, {"ocr_quality_min": 1.0}, lambda c, png: good) == [(1, good)]
+
+
+def test_parse_pdf_renders_at_dpi_from_config(tmp_path):
+    p = _pdf(tmp_path / "d.pdf", [None])
+    sizes = []
+
+    def parse(cfg, png):
+        pm = pymupdf.Pixmap(png)
+        sizes.append(pm.width)
+        return "x"
+
+    parsers.parse_pdf(p, {"render_dpi": 72}, parse)
+    parsers.parse_pdf(p, {"render_dpi": 144}, parse)
+    assert sizes[1] == 2 * sizes[0]

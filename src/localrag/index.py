@@ -6,10 +6,6 @@ from pathlib import Path
 from localrag import config, db, nvidia
 from localrag.parsers import parse_file
 
-CHUNK_SIZE = 1500
-CHUNK_OVERLAP = 200
-
-
 def _bodies(text, size):
     bodies, cur = [], ""
     for para in re.split(r"\n\s*\n", text):
@@ -29,7 +25,7 @@ def _bodies(text, size):
     return bodies
 
 
-def chunk_text(text, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
+def chunk_text(text, size=config.DEFAULTS["chunk_size"], overlap=config.DEFAULTS["chunk_overlap"]):
     chunks = []
     for body in _bodies(text, size):
         prefix = chunks[-1][-overlap:] if chunks and overlap else ""
@@ -39,10 +35,10 @@ def chunk_text(text, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
     return chunks
 
 
-def chunk_pages(pages):
+def chunk_pages(pages, cfg):
     out = []
     for page, text in pages:
-        for chunk in chunk_text(text):
+        for chunk in chunk_text(text, cfg["chunk_size"], cfg["chunk_overlap"]):
             out.append((len(out), page, chunk))
     return out
 
@@ -93,7 +89,7 @@ def index_document(conn, cfg, document_id, *, embed=nvidia.embed, parse_page=nvi
             db.set_document_progress(conn, document_id, done, pages=total)
 
         pages = parse_file(doc["path"], cfg, checked_parse, force_ocr=force_ocr, on_page=on_page)
-        chunks = chunk_pages(pages)
+        chunks = chunk_pages(pages, {**config.DEFAULTS, **cfg})
         if chunks:
             texts = [t for _, _, t in chunks]
             vectors = []

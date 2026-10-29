@@ -1,7 +1,7 @@
 import pytest
 
 from localrag import config, db
-from localrag.retrieval import FINAL_K, retrieve, rrf
+from localrag.retrieval import retrieve, rrf
 
 E1, E2, E3, E4 = [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]
 
@@ -109,7 +109,7 @@ def test_retrieve_limits_to_final_k(env, cfg):
     db.add_chunks(conn, d1, ws, [(i, 1, f"match {i}", E1) for i in range(10)])
     cfg["rerank"] = False
     out = retrieve(conn, cfg, ws, "match", embed=fake_embed(E1), rerank=no_rerank)
-    assert len(out) == FINAL_K == 6
+    assert len(out) == config.DEFAULTS["sources"] == 6
 
 
 def test_retrieve_empty_workspace_returns_empty_without_rerank(env, cfg):
@@ -141,3 +141,22 @@ def test_retrieve_passes_query_input_type(env, cfg):
         return [E1]
 
     assert len(retrieve(conn, cfg, ws, "x", embed=embed, rerank=no_rerank)) == 1
+
+
+def test_retrieve_uses_candidates_rerank_candidates_and_sources_from_config(env, cfg):
+    conn, ws, d1, d2 = env
+    db.add_chunks(conn, d1, ws, [(i, 1, f"match {i}", E1) for i in range(10)])
+    seen = []
+
+    def rerank(c, q, passages):
+        seen.append(len(passages))
+        return [(i, 1.0) for i in range(len(passages))]
+
+    cfg.update(candidates=4, rerank_candidates=5, sources=2)
+    out = retrieve(conn, cfg, ws, "match", embed=fake_embed(E1), rerank=rerank)
+    assert len(out) == 2
+    assert seen == [5]  # 4 fts + 4 vec candidates fused, then cut to 5
+    cfg.update(candidates=1, rerank_candidates=5)
+    seen.clear()
+    retrieve(conn, cfg, ws, "match", embed=fake_embed(E1), rerank=rerank)
+    assert seen[0] <= 2  # one fts + one vec candidate

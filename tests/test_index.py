@@ -41,7 +41,7 @@ def test_chunk_text_empty_returns_empty():
 
 def test_chunk_pages_assigns_global_ord_and_keeps_page():
     pages = [(1, "a" * 2000), (3, "short")]
-    out = index.chunk_pages(pages)
+    out = index.chunk_pages(pages, config.DEFAULTS)
     assert [o for o, _, _ in out] == list(range(len(out)))
     assert [p for _, p, _ in out] == [1, 1, 3]
     assert out[-1][2] == "short"
@@ -233,3 +233,8 @@ def test_reset_document_clears_chunks_and_sets_pending(conn, tmp_path):
     index.reset_document(conn, doc_id)
     row = db.get_document(conn, doc_id)
     assert (row["status"], row["pages_done"], _count(conn, "chunks")) == ("pending", 0, 0)
+
+
+def test_chunk_pages_uses_chunk_size_and_overlap_from_config():
+    out = index.chunk_pages([(1, "abcdefghij" * 3)], {**config.DEFAULTS, "chunk_size": 10, "chunk_overlap": 3})
+    assert [t for _, _, t in out] == ["abcdefghij", "hijabcdefghij", "hijabcdefghij"]

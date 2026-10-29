@@ -9,9 +9,9 @@ import respx
 from localrag import config, nvidia
 
 cfg = {**config.DEFAULTS, "api_key": "test-key"}
-CHAT_URL = f"{nvidia.BASE_URL}/chat/completions"
-EMBED_URL = f"{nvidia.BASE_URL}/embeddings"
-RERANK = nvidia.RERANK_URL.format(model="nvidia/nemotron-3.5-rerank-8b")
+CHAT_URL = f"{config.DEFAULTS['base_url']}/chat/completions"
+EMBED_URL = f"{config.DEFAULTS['base_url']}/embeddings"
+RERANK = config.DEFAULTS["rerank_url"].format(model="nvidia/nemotron-3.5-rerank-8b")
 
 
 def sse(*deltas):
@@ -178,26 +178,26 @@ def fake_time(monkeypatch):
 
 def test_throttle_allows_rpm_requests_without_sleeping(fake_time):
     _, sleeps = fake_time
-    for _ in range(nvidia.RPM):
-        nvidia._throttle()
+    for _ in range(config.DEFAULTS["rpm"]):
+        nvidia._throttle(config.DEFAULTS["rpm"])
     assert sleeps == []
 
 
 def test_throttle_sleeps_until_window_frees(fake_time):
     clock, sleeps = fake_time
-    for _ in range(nvidia.RPM):
-        nvidia._throttle()
+    for _ in range(config.DEFAULTS["rpm"]):
+        nvidia._throttle(config.DEFAULTS["rpm"])
     clock["t"] = 10.0
-    nvidia._throttle()
+    nvidia._throttle(40)
     assert sleeps == [pytest.approx(50)]
     clock["t"] = 200.0
-    nvidia._throttle()
+    nvidia._throttle(40)
     assert len(sleeps) == 1
 
 
 def test_throttle_is_thread_safe(fake_time):
     _, sleeps = fake_time
-    threads = [threading.Thread(target=lambda: [nvidia._throttle() for _ in range(4)]) for _ in range(10)]
+    threads = [threading.Thread(target=lambda: [nvidia._throttle(40) for _ in range(4)]) for _ in range(10)]
     for t in threads:
         t.start()
     for t in threads:
@@ -255,7 +255,7 @@ def test_chat_stream_retries_on_429_before_streaming(fake_time):
 @respx.mock
 def test_every_client_call_passes_through_throttle(monkeypatch):
     calls = []
-    monkeypatch.setattr(nvidia, "_throttle", lambda: calls.append(1))
+    monkeypatch.setattr(nvidia, "_throttle", lambda rpm: calls.append(rpm))
     respx.post(EMBED_URL).mock(return_value=httpx.Response(200, json=embed_resp([[1.0]])))
     respx.post(RERANK).mock(return_value=httpx.Response(200, json={"rankings": []}))
     respx.post(CHAT_URL).mock(side_effect=[
@@ -267,7 +267,7 @@ def test_every_client_call_passes_through_throttle(monkeypatch):
     nvidia.rerank(cfg, "q", ["a"])
     nvidia.parse_page(cfg, b"png")
     list(nvidia.chat_stream(cfg, []))
-    assert len(calls) == 4
+    assert calls == [cfg["rpm"]] * 4
 
 
 @respx.mock
@@ -318,3 +318,47 @@ def test_parse_page_strips_latex_table_markup():
     respx.post(CHAT_URL).mock(return_value=_parse_resp({"content": None, "tool_calls": [
         {"id": "c1", "type": "function", "function": {"name": "markdown_bbox", "arguments": json.dumps(pages)}}]}))
     assert nvidia.parse_page(cfg, b"png") == "Назва | Значення\nТиск | 10 МПа\n\n**Умовна познака**"
+
+
+@respx.mock
+def test_client_uses_base_url_and_timeout_from_config():
+    c = {**cfg, "base_url": "http://local.test/v9", "timeout": 7.5}
+    route = respx.post("http://local.test/v9/embeddings").mock(
+        return_value=httpx.Response(200, json=embed_resp([[1.0]])))
+    assert nvidia.embed(c, ["a"], "query") == [[1.0]]
+    assert route.called
+    client = nvidia._client(c)
+    assert client.timeout == 7.5
+    assert client._client.timeout.read == 7.5
+
+
+@respx.mock
+def test_rerank_posts_to_rerank_url_from_config(monkeypatch):
+    seen = {}
+    real_post = httpx.post
+    monkeypatch.setattr(nvidia.httpx, "post", lambda *a, **k: (seen.update(k), real_post(*a, **k))[1])
+    c = {**cfg, "rerank_url": "http://local.test/rr/{model}", "timeout": 3.0}
+    route = respx.post("http://local.test/rr/nvidia/nemotron-3.5-rerank-8b").mock(
+        return_value=httpx.Response(200, json={"rankings": [{"index": 0, "logit": 1.0}]}))
+    assert nvidia.rerank(c, "q", ["a"]) == [(0, 1.0)]
+    assert route.called and seen["timeout"] == 3.0
+
+
+@respx.mock
+def test_throttle_uses_rpm_from_config(fake_time):
+    _, sleeps = fake_time
+    respx.post(EMBED_URL).mock(return_value=httpx.Response(200, json=embed_resp([[1.0]])))
+    c = {**cfg, "rpm": 2}
+    for _ in range(2):
+        nvidia.embed(c, ["a"], "query")
+    assert sleeps == []
+    nvidia.embed(c, ["a"], "query")
+    assert sleeps == [pytest.approx(60)]
+
+
+@respx.mock
+def test_chat_stream_sends_temperature_and_max_tokens_from_config():
+    route = respx.post(CHAT_URL).mock(return_value=sse({"content": "x"}))
+    list(nvidia.chat_stream({**cfg, "temperature": 0.7, "max_tokens": 123}, []))
+    body = json.loads(route.calls.last.request.content)
+    assert body["temperature"] == 0.7 and body["max_tokens"] == 123
