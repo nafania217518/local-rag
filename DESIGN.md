@@ -114,10 +114,13 @@ Runs in a background thread per document. The UI polls document status.
 
 Sizes are settings (section 4.7); defaults in brackets.
 
-1. FTS5 `MATCH` on the question, top `candidates` (30, BM25 order).
-2. Embed question with `input_type=query`, sqlite-vec KNN top `candidates` (30, cosine).
-3. Reciprocal Rank Fusion (`k=60`), top `rerank_candidates` (20).
-4. Rerank them with `nemotron-3.5-rerank-8b`, keep top `sources` (6).
+0. Paraphrase: when `paraphrase` is on, one chat call with reasoning off writes `paraphrases` (2) alternative phrasings of the question in its own language, one per line. Numbering, quotes, blanks and duplicates are stripped. If the call fails, the question runs alone. The queries are the original plus the paraphrases.
+1. FTS5 `MATCH` per query, top `candidates` (30, BM25 order).
+2. Embed all queries in one call with `input_type=query`, sqlite-vec KNN per vector, top `candidates` (30, cosine).
+3. Reciprocal Rank Fusion (`k=60`) over all FTS and vector rankings, top `rerank_candidates` (20).
+4. Rerank them against the original question with `nemotron-3.5-rerank-8b`, keep top `sources` (6).
+
+Cost per question: one chat request for the paraphrases, one embed, one rerank, then the answer stream. The paraphrases are not shown or stored; a follow-up question is paraphrased without the chat history.
 5. Return chunks with `document name`, `page`, `text`, `score`.
 
 Reranking is a setting (`rerank: true`). Off → RRF top 6.
@@ -166,6 +169,8 @@ Three columns: workspaces + documents list (left), chat with a session selector 
 | Chat | `history_limit` | 10 |
 | Chat | `reasoning_effort` | `none` |
 | Retrieval | `rerank` | true |
+| Retrieval | `paraphrase` | true |
+| Retrieval | `paraphrases` | 2 |
 | Retrieval | `sources` | 6 |
 | Retrieval | `candidates` | 30 |
 | Retrieval | `rerank_candidates` | 20 |

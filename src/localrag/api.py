@@ -170,7 +170,7 @@ def create_app(db_path, cfg_path, files_root, *, embed=nvidia.embed, rerank=nvid
         _found(db.get_session(conn, sid))
         return db.list_messages(conn, sid)
 
-    retrieve = functools.partial(retrieval.retrieve, embed=embed, rerank=rerank)
+    retrieve = functools.partial(retrieval.retrieve, embed=embed, rerank=rerank, chat_stream=chat_stream)
 
     @app.post("/sessions/{sid}/chat")
     def chat_route(sid: int, body: ChatIn, conn=Conn):

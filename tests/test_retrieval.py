@@ -1,14 +1,14 @@
 import pytest
 
 from localrag import config, db
-from localrag.retrieval import retrieve, rrf
+from localrag.retrieval import paraphrase, retrieve, rrf
 
 E1, E2, E3, E4 = [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]
 
 
 @pytest.fixture
 def cfg():
-    return {**config.DEFAULTS, "api_key": "k"}
+    return {**config.DEFAULTS, "api_key": "k", "paraphrase": False}
 
 
 @pytest.fixture
@@ -160,3 +160,75 @@ def test_retrieve_uses_candidates_rerank_candidates_and_sources_from_config(env,
     seen.clear()
     retrieve(conn, cfg, ws, "match", embed=fake_embed(E1), rerank=rerank)
     assert seen[0] <= 2  # one fts + one vec candidate
+
+
+def fake_chat(reply, calls=None):
+    def chat_stream(cfg, messages, reasoning_effort=None):
+        if calls is not None:
+            calls.append((cfg, messages, reasoning_effort))
+        yield "thinking", "hmm"
+        yield "token", reply
+    return chat_stream
+
+
+def test_paraphrase_asks_chat_model_once_for_n_lines_with_no_reasoning(cfg):
+    cfg.update(paraphrase=True, paraphrases=2)
+    calls = []
+    out = paraphrase(cfg, "what is x?", fake_chat("p1\np2", calls))
+    assert out == ["p1", "p2"]
+    assert len(calls) == 1
+    _, messages, effort = calls[0]
+    assert effort == "none"
+    assert "what is x?" in messages[0]["content"] and "2" in messages[0]["content"]
+
+
+def test_paraphrase_strips_numbering_blanks_and_duplicates_and_caps_at_n(cfg):
+    cfg.update(paraphrase=True, paraphrases=2)
+    assert paraphrase(cfg, "q", fake_chat('1. A\n\n- B\nA\n"C"\nq\n')) == ["A", "B"]
+
+
+def test_paraphrase_failure_returns_no_rewrites(cfg):
+    cfg.update(paraphrase=True)
+    def bad(*a, **k):
+        raise RuntimeError("down")
+        yield
+    assert paraphrase(cfg, "q", bad) == []
+
+
+def test_paraphrase_off_does_not_call_chat_model(cfg):
+    def boom(*a, **k):
+        raise AssertionError("called")
+    assert paraphrase(cfg, "q", boom) == []
+
+
+def test_retrieve_fuses_fts_hits_found_only_by_a_paraphrase(env, cfg):
+    conn, ws, d1, d2 = env
+    ids = db.add_chunks(conn, d1, ws, [(0, 1, "alpha words", E1), (1, 1, "omega words", E1)])
+    cfg.update(rerank=False, paraphrase=True, paraphrases=1, sources=1)
+    out = retrieve(conn, cfg, ws, "nothing", embed=fake_embed(E1), rerank=no_rerank,
+                   chat_stream=fake_chat("omega"))
+    assert out[0]["id"] == ids[1]
+
+
+def test_retrieve_embeds_original_and_paraphrases_in_one_call(env, cfg):
+    conn, ws, d1, d2 = env
+    db.add_chunks(conn, d1, ws, [(0, 1, "text", E1)])
+    cfg.update(rerank=False, paraphrase=True, paraphrases=2)
+    calls = []
+    def embed(cfg, texts, input_type):
+        calls.append(texts)
+        return [E1 for _ in texts]
+    retrieve(conn, cfg, ws, "q", embed=embed, rerank=no_rerank, chat_stream=fake_chat("p1\np2"))
+    assert calls == [["q", "p1", "p2"]]
+
+
+def test_retrieve_reranks_with_original_question(env, cfg):
+    conn, ws, d1, d2 = env
+    db.add_chunks(conn, d1, ws, [(0, 1, "text", E1)])
+    cfg.update(rerank=True, paraphrase=True)
+    queries = []
+    def rerank(cfg, query, passages):
+        queries.append(query)
+        return [(i, 1.0) for i in range(len(passages))]
+    retrieve(conn, cfg, ws, "q", embed=fake_embed(E1), rerank=rerank, chat_stream=fake_chat("p1"))
+    assert queries == ["q"]

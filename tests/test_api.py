@@ -177,6 +177,18 @@ def test_chat_error_mid_stream_emits_error_event(tmp_path):
     assert events[-1][0] == "error" and "model died" in events[-1][1]["message"]
 
 
+def test_chat_route_paraphrases_through_injected_chat_stream(tmp_path):
+    calls = []
+    def rec(cfg, messages, *a, **k):
+        calls.append(messages)
+        yield from fake_chat_stream(cfg, messages)
+    client = make(tmp_path, chat_stream=rec)
+    s = _session(client)
+    events = sse(client.post(f"/sessions/{s}/chat", json={"question": "capital?"}).text)
+    assert len(calls) == 2 and "phrasings" in calls[0][0]["content"]
+    assert [e for e, _ in events] == ["thinking", "token", "token", "citations", "done"]
+
+
 def test_settings_get_defaults_and_put_merges(client, tmp_path):
     assert client.get("/settings").json() == config.DEFAULTS
     r = client.put("/settings", json={"api_key": "k", "rerank": False})
