@@ -87,3 +87,58 @@ unit, e2e (UI unchanged; run once at the end), coverage (90 %, expect 100 % on `
 3. In the app, the still-failed row from today: click its red dot; a dialog shows the name and `Error code: 500 - service inference failed`; Close hides it.
 
 On "implement", run the `code` skill on Opus (coder agent), items TR-10 to TR-15 all `[opus]`. Docs afterwards also cover TR-14 (README: the OCR section gets one sentence on the red dot and the error dialog) and TR-15.
+
+
+---
+
+# Plan: configurable embed retries, default 50 (branch `feature/nemotron-3.5-parse`, mode `min`)
+
+## Context
+
+Today a single-text embedding request gets `EMBED_SINGLE_ATTEMPTS = 10` attempts with the backoff wait capped at 8 s. In the live run at 13:41 one chunk got ten 500s in a row from the flaky `nemotron-3.5-embed-8b` endpoint and the whole 125-page document had to be re-imported. The user wants 50 attempts, and the number as a setting, so a bad period at NVIDIA costs waiting instead of a re-import. Project rule: all tunables live in `config.DEFAULTS` and show in the Settings dialog.
+
+## Requirements (ids continue this branch; test names start with the id)
+
+```
+TR-21 [opus]: config.DEFAULTS MUST hold `embed_attempts: 50` (int). A single-text embed request MUST use `cfg["embed_attempts"]` attempts; the constant `EMBED_SINGLE_ATTEMPTS` is removed. Every other call keeps `MAX_ATTEMPTS` (5). `BACKOFF_MAX` (8 s) and the `Retry-After` rule stay. The retry WARNING shows the real total (`retry 3/50`).
+  tests: test_tr21_default_embed_attempts_is_50 (config),
+         test_tr21_single_text_embed_uses_embed_attempts_from_config (cfg with embed_attempts 3: always 500 → 3 requests, raises),
+         test_tr21_single_text_embed_retries_up_to_fifty_by_default (49 × 500 then 200 → vector, 50 requests, sleeps 1, 2, 4, then 8 × 46),
+         test_tr21_retry_log_shows_configured_total (caplog: `retry 1/3`)
+TR-22 [opus]: the Settings dialog Connection group MUST show a number input "Embed retries" (`name="embed_attempts"`, min 1, step 1) after "Timeout, s", and the value MUST round-trip through Save and reopen.
+  tests (ui): test_tr22_settings_saves_embed_attempts (fill 7, save, reopen, value 7, saved as a number via GET /settings)
+```
+
+## Design, by file
+
+- `src/localrag/config.py`: add `"embed_attempts": 50` to `DEFAULTS` (Connection group, next to `rpm` and `timeout`).
+- `src/localrag/nvidia.py`: delete `EMBED_SINGLE_ATTEMPTS`; `_embed_batch` passes `attempts=cfg["embed_attempts"] if len(texts) == 1 else MAX_ATTEMPTS`. Update the one-line why comment on `BACKOFF_MAX` if it names the constant.
+- `src/localrag/static/index.html`: one `<label>Embed retries <input type="number" name="embed_attempts" min="1" step="1"></label>` after the Timeout input in the Connection fieldset. The form binds inputs by `name`; number inputs are already saved as numbers (see `test_settings_saves_numbers_as_numbers`).
+- `api.py` needs no change: `SettingsIn` is generated from `DEFAULTS`.
+
+## Test scope (existing tests that change, with the reason)
+
+- `tests/test_config.py::test_defaults_cover_every_tunable`: add `embed_attempts: 50`.
+- `tests/test_nvidia.py`: the TR-20 tests that reference `nvidia.EMBED_SINGLE_ATTEMPTS` (`test_tr20_single_text_embed_retries_ten_times_with_capped_backoff`, `test_tr20_single_text_embed_gives_up_after_ten_attempts`, `test_tr20_single_text_embed_429_gives_up_after_ten_attempts`, `test_tr20_retry_log_shows_the_real_total`, and `test_tr11_retry_logs_status_body_attempt_and_wait` if it uses the constant) change to the config value; where a test needs a small count, it passes a cfg with `embed_attempts` set (for example 10) so the sleeps list stays short. Rename tests whose name says "ten" when the number comes from cfg.
+- Any other failing test is a bug: stop and report.
+
+## Gates
+
+unit, e2e (one new ui test), coverage ≥ 90 % (expect 100 % on nvidia.py and config.py).
+
+## Docs (writer agent, same branch)
+
+- DESIGN.md: section 3 rate-limit paragraph ("gets 10 attempts" → the `embed_attempts` setting, default 50, worst case about 6.5 minutes per stubborn chunk), settings table Connection row `embed_attempts` 50, section 9.7 TR-20 sentence, caveat bullet in section 8 if it names 10.
+- CLAUDE.md caveat: "gives a single text 10 attempts" → "`embed_attempts` setting (default 50)".
+- README Setup paragraph: add "the embedding retries" to the list of settings.
+- `docs/requirements/feature/nemotron-3.5-parse.md`: rows TR-21, TR-22 (From BR-4); TR-20 marked `(replaced by TR-21)`.
+
+## Risks
+
+- Worst case per stubborn chunk: 1 + 2 + 4 + 8 × 47 = about 6.5 minutes of waiting, during which the document stays `pending` with the page counter complete. Chosen by the user.
+- A user who sets 1 disables retries for single chunks; min="1" keeps the value valid.
+
+## Verification
+
+1. `uv run pytest -m "not live"` passes.
+2. In the app: Settings shows "Embed retries" with 50; change it, save, reopen, value kept.
