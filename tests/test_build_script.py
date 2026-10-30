@@ -14,6 +14,7 @@ GOOD_LOG = "Successfully installed x\nBuilding EXE completed\n"
 
 FAKE_DOCKER = """#!/bin/sh
 if [ "$1" = build ]; then
+  echo "$@" > "${FAKE_ARGS:-/dev/null}"
   printf '%s' "$FAKE_BUILD_LOG"
   if [ -n "${FAKE_BUILD_EXE:-}" ]; then
     while [ $# -gt 0 ]; do
@@ -21,6 +22,7 @@ if [ "$1" = build ]; then
       shift
     done
   fi
+  exit "${FAKE_BUILD_RC:-0}"
 else
   printf '%s\\n' "$FAKE_RUN_OUT"
 fi
@@ -44,9 +46,10 @@ def repo(tmp_path):
     return tmp_path
 
 
-def _build(repo, log, exe=False, run_out=""):
+def _build(repo, log, exe=False, run_out="", rc=0):
     env = dict(os.environ, PATH=f"{repo / 'bin'}:{os.environ['PATH']}",
-               FAKE_BUILD_LOG=log, FAKE_BUILD_EXE="1" if exe else "", FAKE_RUN_OUT=run_out)
+               FAKE_BUILD_LOG=log, FAKE_BUILD_EXE="1" if exe else "", FAKE_RUN_OUT=run_out,
+               FAKE_BUILD_RC=str(rc), FAKE_ARGS=str(repo / "build-args"))
     return subprocess.run(["sh", str(repo / "scripts" / "build-windows.sh")],
                           capture_output=True, text=True, env=env)
 
@@ -76,6 +79,28 @@ def test_tr2_build_script_zips_the_exe_after_smoke_ok(repo):
     r = _build(repo, GOOD_LOG, exe=True, run_out="SMOKE_OK")
     assert r.returncode == 0 and "BUILD_OK" in r.stdout, r.stdout + r.stderr
     assert zipfile.ZipFile(repo / "dist" / "LocalRAG-windows-x64.zip").namelist() == ["LocalRAG.exe"]
+
+
+def test_tr3_build_script_passes_no_cache_to_docker_build(repo):
+    _build(repo, GOOD_LOG, exe=True, run_out="SMOKE_OK")
+    assert "--no-cache" in (repo / "build-args").read_text().split()
+
+
+def test_tr3_build_script_reports_docker_build_exit_status(repo):
+    r = _build(repo, GOOD_LOG, exe=True, run_out="SMOKE_OK", rc=7)
+    assert r.returncode == 1 and "docker build exited 7" in r.stdout
+
+
+def test_tr3_build_script_fails_when_exe_is_missing(repo):
+    r = _build(repo, GOOD_LOG, run_out="SMOKE_OK")
+    assert r.returncode == 1 and "LocalRAG.exe is missing" in r.stdout
+
+
+def test_tr3_build_script_removes_a_stale_zip_before_building(repo):
+    (repo / "dist").mkdir()
+    (repo / "dist" / "LocalRAG-windows-x64.zip").write_text("junk")
+    r = _build(repo, "rosetta error: invalid gdt selector index 5\n", exe=True)
+    assert r.returncode == 1 and not (repo / "dist" / "LocalRAG-windows-x64.zip").exists()
 
 
 def _smoke(tmp_path, curl_rc, tries=None):
