@@ -116,9 +116,8 @@ def index_document(conn, cfg, document_id, *, embed=nvidia.embed, parse_page=nvi
         pages_total = totals[-1] if totals else len(pages)
         db.set_document_status(conn, document_id, "indexed", pages=pages_total, ocr_pages=sum(ocr))
         log.info("indexed %d %s: %d pages, %d via OCR", document_id, name, pages_total, sum(ocr))
-    except Cancelled as exc:
+    except Cancelled:
         log.info("indexing %d cancelled", document_id)
-        db.set_document_status(conn, document_id, "failed", error=str(exc))  # as before: a no-op, the row is gone
         raise
     except Exception as exc:
         error = _error_text(exc)
