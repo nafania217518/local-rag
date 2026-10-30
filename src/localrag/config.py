@@ -10,13 +10,14 @@ DEFAULTS = {
     "chat_model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
     "embed_model": "nvidia/nemotron-3.5-embed-8b",
     "rerank_model": "nvidia/nemotron-3.5-rerank-8b",
-    "parse_model": "nvidia/nemotron-parse",
+    "parse_model": "nvidia/nemotron-3.5-parse",
     "rerank": True,
     "paraphrase": True,
     "paraphrases": 2,
     "reasoning_effort": "none",
     "base_url": "https://integrate.api.nvidia.com/v1",
     "rerank_url": "https://ai.api.nvidia.com/v1/retrieval/{model}/reranking",
+    "parse_url": "https://ai.api.nvidia.com/v1/retrieval/{model}/parse",
     "rpm": 40,  # build.nvidia.com limit, shared by all models
     "timeout": 120.0,
     "system_prompt": (

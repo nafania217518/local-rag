@@ -66,15 +66,16 @@ def test_default_chat_model_is_nemotron_super_vl():
     assert config.DEFAULTS["chat_model"] == "nvidia/nemotron-3.5-super-vl-120b-a12b"
 
 
-def test_default_parse_model_is_nemotron_parse():
+def test_tr1_default_parse_model_is_nemotron_3_5_parse():
     from localrag import config
-    assert config.DEFAULTS["parse_model"] == "nvidia/nemotron-parse"
+    assert config.DEFAULTS["parse_model"] == "nvidia/nemotron-3.5-parse"
 
 
 def test_defaults_cover_every_tunable():
     expected = {
         "base_url": "https://integrate.api.nvidia.com/v1",
         "rerank_url": "https://ai.api.nvidia.com/v1/retrieval/{model}/reranking",
+        "parse_url": "https://ai.api.nvidia.com/v1/retrieval/{model}/parse",
         "rpm": 40, "timeout": 120.0, "temperature": 0.2, "max_tokens": 4096, "history_limit": 10,
         "sources": 6, "candidates": 30, "rerank_candidates": 20, "chunk_size": 1500, "chunk_overlap": 200,
         "ocr_quality_min": 0.8, "min_text_chars": 20, "render_dpi": 150,
