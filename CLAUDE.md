@@ -22,7 +22,7 @@
 
 ## Caveats
 
-- Hosted nemoretriever-ocr-v1 is deprecated and nemotron-parse-2.0 returns 502 upstream; scanned pages go through nemotron-parse (v1) on the chat endpoint, which answers as a markdown_bbox tool call, max_tokens 3500 : DESIGN.md
+- Scanned pages go to nemotron-3.5-parse through a multipart parse endpoint on ai.api.nvidia.com (not chat completions); options accept only decoding.max_output_tokens up to 9000; the response is {content, finish_reason, usage} : DESIGN.md
 - Embeddings need input_type passage/query or retrieval quality drops : DESIGN.md
 - Rerank endpoint is on ai.api.nvidia.com, not the OpenAI base URL : DESIGN.md
 - build.nvidia.com free tier is 40 requests/min across all models; every call goes through the throttle in nvidia.py : DESIGN.md
@@ -35,8 +35,9 @@
 - PyInstaller: webview is imported via importlib (hiddenimports), sqlite-vec has no hook (collect_dynamic_libs), the PyMuPDF 2.0 layout stack (170 MB) is excluded : DESIGN.md
 - Windows bundle has no console; the launcher must not print : DESIGN.md
 - Text-layer quality heuristic flags about 2 % of pages on real scans (figures, forms, covers); it cannot catch well-formed wrong words : DESIGN.md
-- nemotron-parse can return only the running header for a dense table page; redo mode keeps the text layer unless the OCR text is at least half as long and scores higher : DESIGN.md
-- nemotron-parse returns tables as LaTeX tabular and mixes Latin look-alikes into Cyrillic words : DESIGN.md
+- nemotron-3.5-parse returned the full large table that v1 dropped; the redo-mode guard stays (OCR replaces the layer only when at least half as long and scoring higher) : DESIGN.md
+- nemotron-3.5-parse returns tables as LaTeX tabular with \thead and \mbox, puts box and class tokens inline, and still mixes Latin look-alikes into Cyrillic words : DESIGN.md
+- A saved parse_model of nemotron-parse or nemotron-parse-2.0 is migrated to the default at load, because those names 404 on the parse URL : DESIGN.md
 - Only a Windows x64 one-file exe is published (zip on a GitHub release, built by hand; CI runs tests only, on pull requests); one-file mode unpacks to a temp folder at every start : DESIGN.md
 - All tunables live in config.DEFAULTS (no module constants); chunk and OCR settings apply at indexing time only, a changed document must be deleted and added again : DESIGN.md
 - Question paraphrasing costs one extra chat request per question (four requests per question with rerank and the answer); a failed paraphrase call falls back to the original question : DESIGN.md
