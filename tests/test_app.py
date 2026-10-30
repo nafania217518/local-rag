@@ -2,6 +2,7 @@ import socket
 import types
 
 import httpx
+import pytest
 
 from localrag import api, app
 from test_api import fake_chat_stream, fake_embed, fake_parse, fake_rerank
@@ -43,6 +44,13 @@ class FakeWebview:
 
     def start(self):
         self.started = True
+
+
+@pytest.fixture(autouse=True)
+def no_configure_logging(request, monkeypatch):
+    # the real one sets the httpx logger to WARNING for the rest of the session
+    if not request.node.name.startswith("test_tr13"):
+        monkeypatch.setattr(app, "configure_logging", lambda: None)
 
 
 def run_main(ready, argv=None):
