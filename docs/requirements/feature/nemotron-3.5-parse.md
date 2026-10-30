@@ -39,7 +39,8 @@ Branch `feature/nemotron-3.5-parse`, 2026-10-30. Mode `none`: the user asked for
 | TR-21 | opus | `embed_attempts` setting in `config.DEFAULTS`, default 50, sets the attempts for a single-text embed request; the backoff wait stays capped at 8 s; other calls keep 5 attempts | BR-4 |
 | TR-22 | opus | the Settings dialog Connection group has an "Embed retries" number input (`name="embed_attempts"`, min 1) that round-trips | BR-4 |
 | TR-23 | opus | the Settings input "Paraphrases per question" (`name="paraphrases"`) accepts up to 10 (`max="10"`); the default stays 2 | BR-7 |
-| TR-24 | opus | the paraphrase prompt tells the chat model that the documents are technical standards and specifications and asks for the formal technical terms a standard uses instead of everyday words, with the example `варити труби` → `зварювати трубопроводи`; the same-language, one-per-line and no-numbering rules stay | BR-7 |
+| TR-24 | opus | (replaced by TR-25) the paraphrase prompt tells the chat model that the documents are technical standards and specifications and asks for the formal technical terms a standard uses instead of everyday words, with the example `варити труби` → `зварювати трубопроводи`; the same-language, one-per-line and no-numbering rules stay | BR-7 |
+| TR-25 | opus | the paraphrase prompt gives the example as a full question pair after the rules (`Як варити труби?` → `Як зварювати трубопроводи?`) and says to write in the language of the question, not of the example; a bare example made the model answer English questions in Ukrainian (live probe) | BR-7 (own finding) |
 
 ## Out of scope
 
