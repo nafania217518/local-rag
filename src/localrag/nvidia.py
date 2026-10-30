@@ -39,23 +39,23 @@ def _throttle(rpm: int) -> None:
         _sleep(wait)
 
 
-def _retry(fn):
+def _retry(fn, label, *, retry_5xx=True):
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             return fn()
         except (openai.APIStatusError, httpx.HTTPStatusError) as e:
             status = e.response.status_code
-            if not (status == 429 or 500 <= status <= 599) or attempt == MAX_ATTEMPTS:
+            if not (status == 429 or (retry_5xx and 500 <= status <= 599)) or attempt == MAX_ATTEMPTS:
                 raise
             retry_after = e.response.headers.get("Retry-After", "")
             _sleep(int(retry_after) if retry_after.isdigit() else BACKOFF_BASE * 2 ** (attempt - 1))
 
 
-def _throttled(cfg, fn):
+def _throttled(cfg, fn, label, *, retry_5xx=True):
     def call():
         _throttle(cfg["rpm"])
         return fn()
-    return _retry(call)
+    return _retry(call, label, retry_5xx=retry_5xx)
 
 
 def _client(cfg: dict) -> openai.OpenAI:
@@ -69,7 +69,7 @@ def chat_stream(cfg: dict, messages: list[dict], reasoning_effort: str | None = 
     stream = _throttled(cfg, lambda: client.chat.completions.create(
         model=cfg["chat_model"], messages=messages, stream=True, temperature=cfg["temperature"], max_tokens=cfg["max_tokens"],
         extra_body={"reasoning_effort": reasoning_effort or cfg["reasoning_effort"]},
-    ))
+    ), f"chat {cfg['chat_model']}")
     for chunk in stream:
         if not chunk.choices:  # final usage-only chunk
             continue
@@ -88,13 +88,24 @@ def embed(cfg: dict, texts: list[str], input_type: str) -> list[list[float]]:
     client = _client(cfg)
     vectors = []
     for i in range(0, len(texts), EMBED_BATCH):
-        batch = texts[i:i + EMBED_BATCH]
-        resp = _throttled(cfg, lambda: client.embeddings.create(
-            model=cfg["embed_model"], input=batch, encoding_format="float",
-            extra_body={"input_type": input_type, "truncate": "END"},
-        ))
-        vectors += [d.embedding for d in sorted(resp.data, key=lambda d: d.index)]
+        vectors += _embed_batch(cfg, client, texts[i:i + EMBED_BATCH], input_type)
     return vectors
+
+
+def _embed_batch(cfg, client, texts, input_type):
+    try:
+        # A 5xx on a batch is a deterministic rejection: split instead of backing off.
+        resp = _throttled(cfg, lambda: client.embeddings.create(
+            model=cfg["embed_model"], input=texts, encoding_format="float",
+            extra_body={"input_type": input_type, "truncate": "END"},
+        ), f"embed {cfg['embed_model']} x{len(texts)}", retry_5xx=len(texts) == 1)
+    except openai.APIStatusError as e:
+        if len(texts) == 1 or not 500 <= e.response.status_code <= 599:
+            raise
+        half = len(texts) // 2
+        return (_embed_batch(cfg, client, texts[:half], input_type)
+                + _embed_batch(cfg, client, texts[half:], input_type))
+    return [d.embedding for d in sorted(resp.data, key=lambda d: d.index)]
 
 
 def rerank(cfg: dict, query: str, passages: list[str]) -> list[tuple[int, float]]:
@@ -113,7 +124,7 @@ def rerank(cfg: dict, query: str, passages: list[str]) -> list[tuple[int, float]
         resp.raise_for_status()
         return resp
 
-    resp = _throttled(cfg, post)
+    resp = _throttled(cfg, post, f"rerank {model} x{len(passages)}")
     ranked = [(r["index"], r["logit"]) for r in resp.json()["rankings"]]
     return sorted(ranked, key=lambda r: r[1], reverse=True)
 
@@ -155,4 +166,4 @@ def parse_page(cfg: dict, image_png: bytes) -> str:
         resp.raise_for_status()
         return resp
 
-    return _clean(_throttled(cfg, post).json()["content"] or "")
+    return _clean(_throttled(cfg, post, f"parse {cfg['parse_model']}").json()["content"] or "")

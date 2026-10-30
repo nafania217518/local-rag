@@ -381,3 +381,62 @@ def test_chat_stream_sends_temperature_and_max_tokens_from_config():
     list(nvidia.chat_stream({**cfg, "temperature": 0.7, "max_tokens": 123}, []))
     body = json.loads(route.calls.last.request.content)
     assert body["temperature"] == 0.7 and body["max_tokens"] == 123
+
+
+def _echo_unless(fail_sizes, status=500):
+    def handler(request):
+        inputs = json.loads(request.content)["input"]
+        if len(inputs) in fail_sizes:
+            return httpx.Response(status, json={"message": "service inference failed"})
+        return httpx.Response(200, json=embed_resp([[float(t)] for t in inputs]))
+    return handler
+
+
+@respx.mock
+def test_tr10_embed_splits_batch_in_halves_on_5xx(fake_time):
+    route = respx.post(EMBED_URL).mock(side_effect=_echo_unless({64}))
+    texts = [str(i) for i in range(64)]
+    assert nvidia.embed(cfg, texts, "passage") == [[float(i)] for i in range(64)]
+    assert [len(json.loads(c.request.content)["input"]) for c in route.calls] == [64, 32, 32]
+
+
+@respx.mock
+def test_tr10_embed_splits_down_to_single_texts(fake_time):
+    route = respx.post(EMBED_URL).mock(side_effect=_echo_unless({2}))
+    assert nvidia.embed(cfg, ["1", "2"], "passage") == [[1.0], [2.0]]
+    assert [json.loads(c.request.content)["input"] for c in route.calls] == [["1", "2"], ["1"], ["2"]]
+
+
+@respx.mock
+def test_tr10_embed_single_text_5xx_still_retries_with_backoff(fake_time):
+    _, sleeps = fake_time
+    down = httpx.Response(503, json={})
+    respx.post(EMBED_URL).mock(side_effect=[down, down, httpx.Response(200, json=embed_resp([[1.0]]))])
+    assert nvidia.embed(cfg, ["a"], "passage") == [[1.0]]
+    assert sleeps == [1, 2]
+
+
+@respx.mock
+def test_tr10_embed_429_on_a_batch_backs_off_instead_of_splitting(fake_time):
+    _, sleeps = fake_time
+    route = respx.post(EMBED_URL).mock(side_effect=[
+        httpx.Response(429, json={}), httpx.Response(200, json=embed_resp([[1.0], [2.0]]))])
+    assert nvidia.embed(cfg, ["a", "b"], "passage") == [[1.0], [2.0]]
+    assert [len(json.loads(c.request.content)["input"]) for c in route.calls] == [2, 2]
+    assert sleeps == [1]
+
+
+@respx.mock
+def test_tr10_embed_single_text_5xx_gives_up_after_max_attempts(fake_time):
+    route = respx.post(EMBED_URL).mock(return_value=httpx.Response(500, json={}))
+    with pytest.raises(openai.APIStatusError):
+        nvidia.embed(cfg, ["a"], "passage")
+    assert route.call_count == nvidia.MAX_ATTEMPTS
+
+
+@respx.mock
+def test_tr10_embed_other_4xx_on_a_batch_raises_without_split(fake_time):
+    route = respx.post(EMBED_URL).mock(return_value=httpx.Response(401, json={}))
+    with pytest.raises(openai.APIStatusError):
+        nvidia.embed(cfg, ["a", "b"], "passage")
+    assert route.call_count == 1
