@@ -231,6 +231,31 @@ def test_index_sets_total_pages_before_parsing(conn, tmp_path):
     assert seen == [2]
 
 
+def test_tr15_failed_index_stores_server_message_from_response_body(conn, tmp_path):
+    import httpx
+    doc_id = _pdf_doc(conn, tmp_path, [None])
+
+    def failing_parse(cfg, png):
+        raise httpx.HTTPStatusError("Server error '500' for url", request=httpx.Request("POST", "http://x"),
+                                    response=httpx.Response(500, json={"message": "service inference failed"}))
+
+    with pytest.raises(httpx.HTTPStatusError):
+        index.index_document(conn, {}, doc_id, embed=_embed, parse_page=failing_parse)
+    error = db.get_document(conn, doc_id)["error"]
+    assert error.startswith("Server error '500' for url - ") and "service inference failed" in error
+
+
+def test_tr15_failed_index_without_response_keeps_exception_text(conn, tmp_path):
+    doc_id = _pdf_doc(conn, tmp_path, [None])
+
+    def failing_parse(cfg, png):
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        index.index_document(conn, {}, doc_id, embed=_embed, parse_page=failing_parse)
+    assert db.get_document(conn, doc_id)["error"] == "boom"
+
+
 def test_index_records_pages_done_and_ocr_pages(conn, tmp_path):
     doc_id = _pdf_doc(conn, tmp_path, ["Hello text page with enough chars", None, "Third page with enough chars"])
     index.index_document(conn, {}, doc_id, embed=_embed, parse_page=lambda c, png: "OCR TEXT")

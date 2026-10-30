@@ -79,6 +79,12 @@ def store_file(conn, workspace_id, src_path, dest_root=None, name=None):
     return doc_id
 
 
+def _error_text(exc):
+    text = str(exc)
+    body = getattr(getattr(exc, "response", None), "text", "")  # httpx errors keep the server message only here
+    return f"{text} - {body[:500]}" if body and body not in text else text
+
+
 def index_document(conn, cfg, document_id, *, embed=nvidia.embed, parse_page=nvidia.parse_page,
                    force_ocr=False):
     name = None
@@ -113,8 +119,9 @@ def index_document(conn, cfg, document_id, *, embed=nvidia.embed, parse_page=nvi
         db.set_document_status(conn, document_id, "failed", error=str(exc))  # as before: a no-op, the row is gone
         raise
     except Exception as exc:
-        log.exception("indexing %d %s failed: %s", document_id, name, exc)
-        db.set_document_status(conn, document_id, "failed", error=str(exc))
+        error = _error_text(exc)
+        log.exception("indexing %d %s failed: %s", document_id, name, error)
+        db.set_document_status(conn, document_id, "failed", error=error)
         raise
 
 
