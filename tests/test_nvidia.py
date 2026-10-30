@@ -9,6 +9,7 @@ import respx
 from localrag import config, nvidia
 
 cfg = {**config.DEFAULTS, "api_key": "test-key"}
+cfg10 = {**cfg, "embed_attempts": 10}
 CHAT_URL = f"{config.DEFAULTS['base_url']}/chat/completions"
 EMBED_URL = f"{config.DEFAULTS['base_url']}/embeddings"
 RERANK = config.DEFAULTS["rerank_url"].format(model="nvidia/nemotron-3.5-rerank-8b")
@@ -252,11 +253,11 @@ def test_retry_exponential_backoff_on_5xx(fake_time):
 
 
 @respx.mock
-def test_tr20_single_text_embed_429_gives_up_after_ten_attempts(fake_time):
+def test_tr20_single_text_embed_429_gives_up_after_embed_attempts(fake_time):
     route = respx.post(EMBED_URL).mock(return_value=httpx.Response(429, json={}))
     with pytest.raises(openai.APIStatusError):
-        nvidia.embed(cfg, ["a"], "query")
-    assert route.call_count == nvidia.EMBED_SINGLE_ATTEMPTS
+        nvidia.embed(cfg10, ["a"], "query")
+    assert route.call_count == 10
 
 
 @respx.mock
@@ -453,9 +454,9 @@ def test_tr11_retry_logs_status_body_attempt_and_wait(fake_time, caplog):
     respx.post(EMBED_URL).mock(side_effect=[
         httpx.Response(429, headers={"Retry-After": "3"}, text="slow down"),
         httpx.Response(200, json=embed_resp([[1.0]]))])
-    nvidia.embed(cfg, ["a"], "query")
+    nvidia.embed(cfg10, ["a"], "query")
     assert _messages(caplog, "WARNING") == [
-        f"embed {cfg['embed_model']} x1: HTTP 429 slow down, retry 1/{nvidia.EMBED_SINGLE_ATTEMPTS} in 3s"]
+        f"embed {cfg['embed_model']} x1: HTTP 429 slow down, retry 1/10 in 3s"]
 
 
 @respx.mock
@@ -478,21 +479,21 @@ def test_tr11_parse_and_rerank_calls_are_logged_too(fake_time, caplog):
 
 
 @respx.mock
-def test_tr20_single_text_embed_retries_ten_times_with_capped_backoff(fake_time):
+def test_tr20_single_text_embed_retries_embed_attempts_times_with_capped_backoff(fake_time):
     _, sleeps = fake_time
     route = respx.post(EMBED_URL).mock(
         side_effect=[httpx.Response(500, json={})] * 9 + [httpx.Response(200, json=embed_resp([[1.0]]))])
-    assert nvidia.embed(cfg, ["a"], "passage") == [[1.0]]
+    assert nvidia.embed(cfg10, ["a"], "passage") == [[1.0]]
     assert route.call_count == 10
     assert sleeps == [1, 2, 4, 8, 8, 8, 8, 8, 8]
 
 
 @respx.mock
-def test_tr20_single_text_embed_gives_up_after_ten_attempts(fake_time):
+def test_tr20_single_text_embed_gives_up_after_embed_attempts(fake_time):
     route = respx.post(EMBED_URL).mock(return_value=httpx.Response(500, json={}))
     with pytest.raises(openai.APIStatusError):
-        nvidia.embed(cfg, ["a"], "passage")
-    assert route.call_count == nvidia.EMBED_SINGLE_ATTEMPTS
+        nvidia.embed(cfg10, ["a"], "passage")
+    assert route.call_count == 10
 
 
 @respx.mock
@@ -510,5 +511,32 @@ def test_tr20_retry_log_shows_the_real_total(fake_time, caplog):
     caplog.set_level("INFO", logger="localrag.nvidia")
     respx.post(EMBED_URL).mock(side_effect=[
         httpx.Response(500, text="boom"), httpx.Response(200, json=embed_resp([[1.0]]))])
-    nvidia.embed(cfg, ["a"], "passage")
+    nvidia.embed(cfg10, ["a"], "passage")
     assert any("retry 1/10 " in m for m in _messages(caplog, "WARNING"))
+
+
+@respx.mock
+def test_tr21_single_text_embed_uses_embed_attempts_from_config(fake_time):
+    route = respx.post(EMBED_URL).mock(return_value=httpx.Response(500, json={}))
+    with pytest.raises(openai.APIStatusError):
+        nvidia.embed({**cfg, "embed_attempts": 3}, ["a"], "passage")
+    assert route.call_count == 3
+
+
+@respx.mock
+def test_tr21_single_text_embed_retries_up_to_fifty_by_default(fake_time):
+    _, sleeps = fake_time
+    route = respx.post(EMBED_URL).mock(
+        side_effect=[httpx.Response(500, json={})] * 49 + [httpx.Response(200, json=embed_resp([[1.0]]))])
+    assert nvidia.embed(cfg, ["a"], "passage") == [[1.0]]
+    assert route.call_count == 50
+    assert sleeps == [1, 2, 4] + [8] * 46
+
+
+@respx.mock
+def test_tr21_retry_log_shows_configured_total(fake_time, caplog):
+    caplog.set_level("INFO", logger="localrag.nvidia")
+    respx.post(EMBED_URL).mock(side_effect=[
+        httpx.Response(500, text="boom"), httpx.Response(200, json=embed_resp([[1.0]]))])
+    nvidia.embed({**cfg, "embed_attempts": 3}, ["a"], "passage")
+    assert any("retry 1/3 " in m for m in _messages(caplog, "WARNING"))

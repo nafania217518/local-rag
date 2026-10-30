@@ -12,9 +12,7 @@ import openai
 EMBED_BATCH = 64
 PARSE_MAX_TOKENS = 9000  # hosted nemotron-3.5-parse caps max_output_tokens at 9000
 MAX_ATTEMPTS = 5
-# The 8b embed endpoint fails long single inputs at random (DESIGN.md 9.7).
-EMBED_SINGLE_ATTEMPTS = 10
-# Caps the backoff so the extra single-text attempts do not wait minutes.
+# Caps the backoff so the many single-text embed attempts do not wait minutes.
 BACKOFF_MAX = 8.0
 BACKOFF_BASE = 1.0
 WINDOW = 60.0
@@ -112,7 +110,7 @@ def _embed_batch(cfg, client, texts, input_type):
             model=cfg["embed_model"], input=texts, encoding_format="float",
             extra_body={"input_type": input_type, "truncate": "END"},
         ), label, retry_5xx=len(texts) == 1,
-           attempts=EMBED_SINGLE_ATTEMPTS if len(texts) == 1 else MAX_ATTEMPTS)
+           attempts=cfg["embed_attempts"] if len(texts) == 1 else MAX_ATTEMPTS)
     except openai.APIStatusError as e:
         if len(texts) == 1 or not 500 <= e.response.status_code <= 599:
             raise

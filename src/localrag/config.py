@@ -20,6 +20,7 @@ DEFAULTS = {
     "parse_url": "https://ai.api.nvidia.com/v1/retrieval/{model}/parse",
     "rpm": 40,  # build.nvidia.com limit, shared by all models
     "timeout": 120.0,
+    "embed_attempts": 50,  # the 8b embed endpoint fails long single inputs at random
     "system_prompt": (
         "You answer questions about the user's documents.\n"
         "- Answer only from the numbered context passages.\n"
