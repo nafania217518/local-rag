@@ -99,6 +99,48 @@ def test_index_document_marks_failed_on_error_and_reraises(conn, tmp_path):
     assert "boom" in row["error"]
 
 
+def _zero_embed(cfg, texts, input_type):
+    return [[0.0] * 4 for _ in texts]
+
+
+def _index_records(caplog):
+    return [(r.levelname, r.getMessage()) for r in caplog.records if r.name == "localrag.index"]
+
+
+def test_tr12_index_logs_start_and_result(conn, tmp_path, caplog):
+    caplog.set_level("INFO", logger="localrag.index")
+    doc_id = _stored(conn, tmp_path, "hello")
+    index.index_document(conn, {}, doc_id, embed=_zero_embed, parse_page=None)
+    assert _index_records(caplog) == [("INFO", f"indexing {doc_id} a.txt"),
+                                      ("INFO", f"indexed {doc_id} a.txt: 1 pages, 0 via OCR")]
+
+
+def test_tr12_failed_index_logs_error_with_exception_message(conn, tmp_path, caplog):
+    doc_id = _stored(conn, tmp_path, "hello")
+
+    def boom(cfg, texts, input_type):
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        index.index_document(conn, {}, doc_id, embed=boom)
+    errors = [r for r in caplog.records if r.name == "localrag.index" and r.levelname == "ERROR"]
+    assert [r.getMessage() for r in errors] == [f"indexing {doc_id} a.txt failed: boom"]
+    assert errors[0].exc_info[0] is RuntimeError
+
+
+def test_tr12_cancelled_index_logs_info_not_error(conn, tmp_path, caplog):
+    caplog.set_level("INFO", logger="localrag.index")
+    doc_id = _stored(conn, tmp_path, "hello")
+
+    def deleting_embed(cfg, texts, input_type):
+        db.delete_document(conn, doc_id)
+        return _zero_embed(cfg, texts, input_type)
+
+    with pytest.raises(index.Cancelled):
+        index.index_document(conn, {}, doc_id, embed=deleting_embed, parse_page=None)
+    assert _index_records(caplog)[1:] == [("INFO", f"indexing {doc_id} cancelled")]
+
+
 def test_index_document_zero_chunks_marks_indexed_without_embed(conn, tmp_path):
     doc_id = _stored(conn, tmp_path, "")
 
