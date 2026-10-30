@@ -1,4 +1,5 @@
 import importlib
+import logging
 import socket
 import sys
 import threading
@@ -49,7 +50,15 @@ def run_server(app, port):
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 
 
+def configure_logging():
+    if sys.stderr is None:  # the windowed Windows exe has no console
+        return
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s", stream=sys.stderr)
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # it logs every request at INFO
+
+
 def main(argv=None, *, make_app=make_app, serve=serve, wait_ready=wait_ready, webview=None, run=None) -> int:
+    configure_logging()
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) == 2 and argv[0] == "--serve":
         (run or run_server)(make_app(), int(argv[1]))

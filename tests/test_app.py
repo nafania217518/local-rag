@@ -52,6 +52,37 @@ def run_main(ready, argv=None):
     return code, server, wv
 
 
+def test_tr13_configure_logging_installs_stderr_handler_at_info(monkeypatch):
+    import logging
+    import sys
+    calls = []
+    monkeypatch.setattr(logging, "basicConfig", lambda **kw: calls.append(kw))
+    monkeypatch.setattr(logging.getLogger("httpx"), "level", logging.NOTSET)
+    app.configure_logging()
+    assert calls == [{"level": logging.INFO, "format": "%(asctime)s %(levelname)s %(name)s: %(message)s",
+                      "stream": sys.stderr}]
+    assert logging.getLogger("httpx").level == logging.WARNING
+
+
+def test_tr13_configure_logging_skips_when_stderr_is_none(monkeypatch):
+    import logging
+    import sys
+    calls = []
+    monkeypatch.setattr(sys, "stderr", None)
+    monkeypatch.setattr(logging, "basicConfig", lambda **kw: calls.append(kw))
+    monkeypatch.setattr(logging.getLogger("httpx"), "level", logging.NOTSET)
+    app.configure_logging()
+    assert calls == [] and logging.getLogger("httpx").level == logging.NOTSET
+
+
+def test_tr13_main_configures_logging(monkeypatch):
+    calls = []
+    monkeypatch.setattr(app, "configure_logging", lambda: calls.append(1))
+    run_main(True)
+    app.main(["--serve", "1"], make_app=lambda: "app", run=lambda a, p: None)
+    assert calls == [1, 1]
+
+
 def test_main_creates_window_and_stops_server():
     code, server, wv = run_main(True)
     assert code == 0 and server.should_exit is True and wv.started
