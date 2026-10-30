@@ -252,11 +252,11 @@ def test_retry_exponential_backoff_on_5xx(fake_time):
 
 
 @respx.mock
-def test_retry_gives_up_after_max_attempts(fake_time):
+def test_tr20_single_text_embed_429_gives_up_after_ten_attempts(fake_time):
     route = respx.post(EMBED_URL).mock(return_value=httpx.Response(429, json={}))
     with pytest.raises(openai.APIStatusError):
         nvidia.embed(cfg, ["a"], "query")
-    assert route.call_count == nvidia.MAX_ATTEMPTS
+    assert route.call_count == nvidia.EMBED_SINGLE_ATTEMPTS
 
 
 @respx.mock
@@ -428,14 +428,6 @@ def test_tr10_embed_429_on_a_batch_backs_off_instead_of_splitting(fake_time):
 
 
 @respx.mock
-def test_tr10_embed_single_text_5xx_gives_up_after_max_attempts(fake_time):
-    route = respx.post(EMBED_URL).mock(return_value=httpx.Response(500, json={}))
-    with pytest.raises(openai.APIStatusError):
-        nvidia.embed(cfg, ["a"], "passage")
-    assert route.call_count == nvidia.MAX_ATTEMPTS
-
-
-@respx.mock
 def test_tr10_embed_other_4xx_on_a_batch_raises_without_split(fake_time):
     route = respx.post(EMBED_URL).mock(return_value=httpx.Response(401, json={}))
     with pytest.raises(openai.APIStatusError):
@@ -463,7 +455,7 @@ def test_tr11_retry_logs_status_body_attempt_and_wait(fake_time, caplog):
         httpx.Response(200, json=embed_resp([[1.0]]))])
     nvidia.embed(cfg, ["a"], "query")
     assert _messages(caplog, "WARNING") == [
-        f"embed {cfg['embed_model']} x1: HTTP 429 slow down, retry 1/{nvidia.MAX_ATTEMPTS} in 3s"]
+        f"embed {cfg['embed_model']} x1: HTTP 429 slow down, retry 1/{nvidia.EMBED_SINGLE_ATTEMPTS} in 3s"]
 
 
 @respx.mock
@@ -483,3 +475,40 @@ def test_tr11_parse_and_rerank_calls_are_logged_too(fake_time, caplog):
     nvidia.parse_page(cfg, b"png")
     assert _messages(caplog, "INFO") == [f"rerank {cfg['rerank_model']} x2: ok in 0.0s",
                                          f"parse {cfg['parse_model']}: ok in 0.0s"]
+
+
+@respx.mock
+def test_tr20_single_text_embed_retries_ten_times_with_capped_backoff(fake_time):
+    _, sleeps = fake_time
+    route = respx.post(EMBED_URL).mock(
+        side_effect=[httpx.Response(500, json={})] * 9 + [httpx.Response(200, json=embed_resp([[1.0]]))])
+    assert nvidia.embed(cfg, ["a"], "passage") == [[1.0]]
+    assert route.call_count == 10
+    assert sleeps == [1, 2, 4, 8, 8, 8, 8, 8, 8]
+
+
+@respx.mock
+def test_tr20_single_text_embed_gives_up_after_ten_attempts(fake_time):
+    route = respx.post(EMBED_URL).mock(return_value=httpx.Response(500, json={}))
+    with pytest.raises(openai.APIStatusError):
+        nvidia.embed(cfg, ["a"], "passage")
+    assert route.call_count == nvidia.EMBED_SINGLE_ATTEMPTS
+
+
+@respx.mock
+def test_tr20_other_calls_keep_five_attempts(fake_time):
+    _, sleeps = fake_time
+    route = respx.post(RERANK).mock(return_value=httpx.Response(503, json={}))
+    with pytest.raises(httpx.HTTPStatusError):
+        nvidia.rerank(cfg, "q", ["a"])
+    assert route.call_count == nvidia.MAX_ATTEMPTS
+    assert sleeps == [1, 2, 4, 8]
+
+
+@respx.mock
+def test_tr20_retry_log_shows_the_real_total(fake_time, caplog):
+    caplog.set_level("INFO", logger="localrag.nvidia")
+    respx.post(EMBED_URL).mock(side_effect=[
+        httpx.Response(500, text="boom"), httpx.Response(200, json=embed_resp([[1.0]]))])
+    nvidia.embed(cfg, ["a"], "passage")
+    assert any("retry 1/10 " in m for m in _messages(caplog, "WARNING"))

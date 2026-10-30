@@ -12,6 +12,10 @@ import openai
 EMBED_BATCH = 64
 PARSE_MAX_TOKENS = 9000  # hosted nemotron-3.5-parse caps max_output_tokens at 9000
 MAX_ATTEMPTS = 5
+# The 8b embed endpoint fails long single inputs at random (DESIGN.md 9.7).
+EMBED_SINGLE_ATTEMPTS = 10
+# Caps the backoff so the extra single-text attempts do not wait minutes.
+BACKOFF_MAX = 8.0
 BACKOFF_BASE = 1.0
 WINDOW = 60.0
 
@@ -41,27 +45,27 @@ def _throttle(rpm: int) -> None:
         _sleep(wait)
 
 
-def _retry(fn, label, *, retry_5xx=True):
-    for attempt in range(1, MAX_ATTEMPTS + 1):
+def _retry(fn, label, *, retry_5xx=True, attempts=MAX_ATTEMPTS):
+    for attempt in range(1, attempts + 1):
         try:
             return fn()
         except (openai.APIStatusError, httpx.HTTPStatusError) as e:
             status = e.response.status_code
-            if not (status == 429 or (retry_5xx and 500 <= status <= 599)) or attempt == MAX_ATTEMPTS:
+            if not (status == 429 or (retry_5xx and 500 <= status <= 599)) or attempt == attempts:
                 raise
             retry_after = e.response.headers.get("Retry-After", "")
-            wait = int(retry_after) if retry_after.isdigit() else BACKOFF_BASE * 2 ** (attempt - 1)
+            wait = int(retry_after) if retry_after.isdigit() else min(BACKOFF_BASE * 2 ** (attempt - 1), BACKOFF_MAX)
             log.warning("%s: HTTP %d %s, retry %d/%d in %ds", label, status, e.response.text[:200], attempt,
-                        MAX_ATTEMPTS, wait)
+                        attempts, wait)
             _sleep(wait)
 
 
-def _throttled(cfg, fn, label, *, retry_5xx=True):
+def _throttled(cfg, fn, label, *, retry_5xx=True, attempts=MAX_ATTEMPTS):
     def call():
         _throttle(cfg["rpm"])
         return fn()
     start = _now()
-    result = _retry(call, label, retry_5xx=retry_5xx)
+    result = _retry(call, label, retry_5xx=retry_5xx, attempts=attempts)
     log.info("%s: ok in %.1fs", label, _now() - start)
     return result
 
@@ -107,7 +111,8 @@ def _embed_batch(cfg, client, texts, input_type):
         resp = _throttled(cfg, lambda: client.embeddings.create(
             model=cfg["embed_model"], input=texts, encoding_format="float",
             extra_body={"input_type": input_type, "truncate": "END"},
-        ), label, retry_5xx=len(texts) == 1)
+        ), label, retry_5xx=len(texts) == 1,
+           attempts=EMBED_SINGLE_ATTEMPTS if len(texts) == 1 else MAX_ATTEMPTS)
     except openai.APIStatusError as e:
         if len(texts) == 1 or not 500 <= e.response.status_code <= 599:
             raise
