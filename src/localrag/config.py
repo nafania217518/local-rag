@@ -60,6 +60,9 @@ def load_config(path: Path | None = None) -> dict:
     cfg = dict(DEFAULTS)
     if path.exists():
         cfg.update(json.loads(path.read_text(encoding="utf-8")))
+    # an upgraded install keeps its saved config; the retired chat-endpoint parse models 404 on parse_url
+    if cfg["parse_model"] in ("nvidia/nemotron-parse", "nvidia/nemotron-parse-2.0"):
+        cfg["parse_model"] = DEFAULTS["parse_model"]
     return cfg
 
 

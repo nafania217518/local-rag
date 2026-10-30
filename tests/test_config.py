@@ -86,5 +86,20 @@ def test_defaults_cover_every_tunable():
     assert "[n]" in DEFAULTS["system_prompt"]
 
 
+@pytest.mark.parametrize("retired", ["nvidia/nemotron-parse", "nvidia/nemotron-parse-2.0"])
+def test_tr6_load_config_replaces_retired_parse_model(retired, tmp_path):
+    from localrag.config import load_config, save_config
+    path = tmp_path / "config.json"
+    save_config({"parse_model": retired}, path)
+    assert load_config(path)["parse_model"] == DEFAULTS["parse_model"]
+
+
+def test_tr6_load_config_keeps_other_saved_parse_model(tmp_path):
+    from localrag.config import load_config, save_config
+    path = tmp_path / "config.json"
+    save_config({"parse_model": "my/parse"}, path)
+    assert load_config(path)["parse_model"] == "my/parse"
+
+
 def test_defaults_paraphrase_on_with_two_rewrites():
     assert DEFAULTS["paraphrase"] is True and DEFAULTS["paraphrases"] == 2
