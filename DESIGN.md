@@ -339,7 +339,7 @@ The OCR path moved to `nvidia/nemotron-3.5-parse` on the parse endpoint. The pro
 | 158 p97 (form tables) | n/a | 200 in 12 s | four `tabular` blocks and a Footnote element; cell text correct |
 | 160 p1 (cover) | 0.50 (spaced letters) | 200 in 4 s; cleaned 0.98, 487 ch | Title and Text elements, correct Ukrainian (v1 scored 0.67); the logo text came back as a Picture element |
 
-Tables still come as LaTeX `tabular`, now with `\thead{...}` around header cells and `\mbox{}` for empty cells. `nvidia._clean` strips the box and class tokens, unwraps `\thead`, drops `\mbox{}` and flattens the tabular to `cell | cell` rows. Latin look-alike letters still appear in some table cells (`МІЛА` for `МПа`, `Нознака` for `Познака`); the quality score still sees those as mixed script. The redo-mode guard stays: the OCR text replaces the layer only when it is at least half as long and scores higher.
+Tables still come as LaTeX `tabular`, now with `\thead{...}` around header cells and `\mbox{}` for empty cells. `nvidia._clean` strips the box and class tokens, unwraps `\thead` and nested `\multirow`/`\multicolumn` cells, drops `\mbox{}`, renders `<sup>N</sup>` as `^N` (so `кгс/см<sup>2</sup>` stays `кгс/см^2`, not `кгс/см2`) and flattens the tabular to `cell | cell` rows. Latin look-alike letters still appear in some table cells (`МІЛА` for `МПа`, `Нознака` for `Познака`); the quality score still sees those as mixed script. The redo-mode guard stays: the OCR text replaces the layer only when it is at least half as long and scores higher.
 
 ## Sources
 
