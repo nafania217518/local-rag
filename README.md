@@ -73,7 +73,7 @@ Live tests against the real NVIDIA endpoints run only when `NVIDIA_API_KEY` is s
 
 ## Build the Windows exe
 
-The script `scripts/build-windows.sh` runs the Docker build, checks the build log, smoke-tests the exe under Wine and writes `dist/LocalRAG-windows-x64.zip`. It stops with a reason when a step fails. Run it from the repo root:
+The script `scripts/build-windows.sh` runs the Docker build, checks the build log, smoke-tests the exe under Wine and writes `dist/LocalRAG-windows-x64.zip`. It stops with a reason when a step fails. It needs Docker and uv on the host. Run it from the repo root:
 
 ```
 scripts/build-windows.sh
