@@ -439,6 +439,34 @@ def _stub_docs(page, server, docs):
     page.locator("#workspaces li").last.click()
 
 
+_TR14_ERROR = "Error code: 500 - service inference failed " * 5
+_TR14_DOCS = [
+    {"id": 1, "name": "p.pdf", "status": "pending", "error": None, "pages": None, "pages_done": None},
+    {"id": 2, "name": "i.pdf", "status": "indexed", "error": None, "pages": 1, "ocr_pages": 0},
+    {"id": 3, "name": "f.pdf", "status": "failed", "error": _TR14_ERROR, "pages": None}]
+
+
+def test_tr14_failed_row_dot_opens_error_dialog_with_message(page, server):
+    _stub_docs(page, server, _TR14_DOCS)
+    page.click("#documents li[data-id='3'] button.status")
+    dialog = page.locator("#error-dialog")
+    expect(dialog).to_be_visible()
+    expect(page.locator("#error-title")).to_have_text("f.pdf")
+    expect(page.locator("#error-text")).to_have_text(_TR14_ERROR)
+    dialog.get_by_role("button", name="Close").click()
+    expect(dialog).to_be_hidden()
+
+
+def test_tr14_indexed_and_pending_dots_are_not_buttons(page, server):
+    _stub_docs(page, server, _TR14_DOCS)
+    for i in (1, 2):
+        row = page.locator(f"#documents li[data-id='{i}']")
+        expect(row.locator("span.status")).to_have_count(1)
+        expect(row.locator("button.status")).to_have_count(0)
+    failed = page.locator("#documents li[data-id='3'] button.status")
+    expect(failed).to_have_attribute("aria-label", "Show error")
+
+
 def test_pending_row_shows_page_progress(page, server):
     _stub_docs(page, server, [
         {"id": 1, "name": "a.pdf", "status": "pending", "error": None, "pages": 170, "pages_done": 34},

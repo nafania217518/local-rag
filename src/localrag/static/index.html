@@ -36,6 +36,9 @@
   li[data-status="indexed"] .status::before { background: var(--ok); }
   li[data-status="pending"] .status::before { background: var(--amber); }
   li[data-status="failed"] .status::before { background: var(--red); }
+  /* a real 7px box, same footprint as width 0 + 7px margin, so the dot is a click target */
+  button.status { cursor: pointer; border: 0; background: none; padding: 0; width: 7px; margin-right: 0; }
+  #error-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 60vh; overflow: auto; }
   .doc-delete { border: 0; background: none; padding: 0 4px; color: var(--pencil); visibility: hidden; }
   li:hover .doc-delete, li:focus-within .doc-delete { visibility: visible; }
   .doc-ocr { border: 0; background: none; padding: 0 4px; color: var(--pencil); visibility: hidden; display: inline-flex; }
@@ -173,6 +176,13 @@
   <form method="dialog">
     <p id="ocr-text"></p>
     <div class="actions"><button id="ocr-cancel" value="cancel">Cancel</button><button id="ocr-ok" value="ok" class="primary">Run OCR</button></div>
+  </form>
+</dialog>
+<dialog id="error-dialog">
+  <form method="dialog">
+    <h2 id="error-title"></h2>
+    <pre id="error-text"></pre>
+    <div class="actions"><button value="close">Close</button></div>
   </form>
 </dialog>
 <dialog id="settings">
@@ -334,6 +344,18 @@ $("#ocr-ok").onclick = async () => {
   await api("POST", `/workspaces/${state.ws}/documents/${ocrDoc.id}/ocr`);
   loadDocuments();
 };
+function openErrorDialog(d) {
+  $("#error-title").textContent = d.name;
+  $("#error-text").textContent = d.error || "failed";
+  $("#error-dialog").showModal();
+}
+function statusDot(d) {
+  if (d.status !== "failed") return el("span", "status", d.status);
+  const dot = el("button", "status", d.status);
+  dot.setAttribute("aria-label", "Show error");
+  dot.onclick = () => openErrorDialog(d);
+  return dot;
+}
 
 async function loadDocuments() {
   if (!state.ws) return;
@@ -359,7 +381,7 @@ async function loadDocuments() {
     ocr.onclick = () => openOcrDialog(d);
     const del = el("button", "doc-delete", "×");
     del.onclick = async () => { await api("DELETE", `/workspaces/${state.ws}/documents/${d.id}`); loadDocuments(); };
-    li.append(el("span", "status", d.status), ocr, del);
+    li.append(statusDot(d), ocr, del);
     ul.append(li);
   }
   $("#docs-empty").hidden = docs.length > 0;
