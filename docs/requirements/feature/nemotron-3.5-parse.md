@@ -31,6 +31,10 @@ Branch `feature/nemotron-3.5-parse`, 2026-10-30. Mode `none`: the user asked for
 | TR-14 | opus | in the documents list, the status dot of a failed row MUST be a button (aria-label "Show error") that opens a dialog with the document name and the full error text; the dot of a pending or indexed row stays a plain marker; the dialog has one Close button; the row tooltip keeps the error | BR-6 |
 | TR-15 | opus | when indexing fails on an HTTP error whose response has a body, the stored error MUST include that body (first 500 chars), so the dialog and the log show the server message | BR-5, BR-6 |
 | TR-16 | opus | `_error_text` appends the response body only for `httpx.HTTPStatusError`; an `openai.APIStatusError` already carries the server message in its text, so it is not repeated | BR-5, BR-6 (review finding) |
+| TR-17 | opus | the `Cancelled` branch of `index_document` no longer calls `set_document_status` (dead code: the row is gone) | review finding |
+| TR-18 | opus | the `test_app.py` tests stub `configure_logging` so the `httpx` logger level does not leak between tests | review finding |
+| TR-19 | opus | the odd split (3 texts → 1 + 2 → 1 + 1 + 1) is covered by a test that checks the vector order | review finding |
+| TR-20 | opus | a single-text embed request gets 10 attempts with the backoff wait capped at 8 s; other calls keep 5 attempts | BR-4 (second finding: random single-input failures at about 40 % for long chunks) |
 
 ## Out of scope
 
