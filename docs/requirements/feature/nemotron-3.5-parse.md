@@ -34,7 +34,9 @@ Branch `feature/nemotron-3.5-parse`, 2026-10-30. Mode `none`: the user asked for
 | TR-17 | opus | the `Cancelled` branch of `index_document` no longer calls `set_document_status` (dead code: the row is gone) | review finding |
 | TR-18 | opus | the `test_app.py` tests stub `configure_logging` so the `httpx` logger level does not leak between tests | review finding |
 | TR-19 | opus | the odd split (3 texts → 1 + 2 → 1 + 1 + 1) is covered by a test that checks the vector order | review finding |
-| TR-20 | opus | a single-text embed request gets 10 attempts with the backoff wait capped at 8 s; other calls keep 5 attempts | BR-4 (second finding: random single-input failures at about 40 % for long chunks) |
+| TR-20 | opus | (replaced by TR-21) a single-text embed request gets 10 attempts with the backoff wait capped at 8 s; other calls keep 5 attempts | BR-4 (second finding: random single-input failures at about 40 % for long chunks) |
+| TR-21 | opus | `embed_attempts` setting in `config.DEFAULTS`, default 50, sets the attempts for a single-text embed request; the backoff wait stays capped at 8 s; other calls keep 5 attempts | BR-4 |
+| TR-22 | opus | the Settings dialog Connection group has an "Embed retries" number input (`name="embed_attempts"`, min 1) that round-trips | BR-4 |
 
 ## Out of scope
 
