@@ -119,6 +119,7 @@ def rerank(cfg: dict, query: str, passages: list[str]) -> list[tuple[int, float]
 
 
 _MARKER = re.compile(r"</?[a-z]{2,4}>|<[xy]_[\d.]+>|<class_[\w-]+>")  # box corners, element class, <sup>, <tbc>
+_SUP = re.compile(r"<sup>(.*?)</sup>")  # before _MARKER: keep the exponent apart from its base
 
 
 _LATEX = [
@@ -133,7 +134,7 @@ _LATEX = [
 
 
 def _clean(text: str) -> str:
-    text = _MARKER.sub("", text)
+    text = _MARKER.sub("", _SUP.sub(r"^\1", text))
     for pattern, repl in _LATEX:
         n = 1
         while n:  # nested merged cells unwrap one level per pass

@@ -320,7 +320,7 @@ def test_tr3_parse_page_strips_box_and_class_tokens():
 @respx.mock
 def test_tr3_parse_page_still_strips_old_marker_tags():
     respx.post(PARSE).mock(return_value=parse_resp("<tbc>Kyiv is the capital<sup>13</sup>.</tbc>"))
-    assert nvidia.parse_page(cfg, b"png") == "Kyiv is the capital13."
+    assert nvidia.parse_page(cfg, b"png") == "Kyiv is the capital^13."
 
 
 @respx.mock
@@ -328,7 +328,7 @@ def test_tr3_parse_page_unwraps_thead_and_drops_mbox():
     respx.post(PARSE).mock(return_value=parse_resp(
         "<x_0.1><y_0.1>\\begin{tabular}{cc}\n\\multirow{2}{*}{\\thead{Назва}} & \\thead{Значення}\\\\\n"
         "\\mbox{} & 10 МПа<sup>2</sup>\\\\\n\\end{tabular}<x_0.9><y_0.2><class_Table>"))
-    assert nvidia.parse_page(cfg, b"png") == "Назва | Значення\n | 10 МПа2"
+    assert nvidia.parse_page(cfg, b"png") == "Назва | Значення\n | 10 МПа^2"
 
 
 @respx.mock
@@ -343,6 +343,12 @@ def test_tr3_parse_page_flattens_latex_table():
 def test_tr7_parse_page_unwraps_nested_merged_cells():
     respx.post(PARSE).mock(return_value=parse_resp(r"\multicolumn{2}{c}{\multirow{2}{*}{X}} & b \\"))
     assert nvidia.parse_page(cfg, b"png") == "X | b"
+
+
+@respx.mock
+def test_tr8_parse_page_renders_superscript_with_caret():
+    respx.post(PARSE).mock(return_value=parse_resp("10<sup>6</sup>"))
+    assert nvidia.parse_page(cfg, b"png") == "10^6"
 
 
 @respx.mock
