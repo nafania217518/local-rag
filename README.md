@@ -22,6 +22,8 @@ For a scanned page that already had a text layer, the OCR text replaces it only 
 
 Each document row has a scan button to force OCR on every page of that document. It asks for confirmation, then re-indexes the document and shows the page progress, for example `34 / 170`. The tooltip on an indexed row tells how many pages went through OCR.
 
+If indexing of a document fails, its row shows a red dot. Click the dot to read the error.
+
 ## Install
 
 ### Windows x64
@@ -54,6 +56,8 @@ The app needs a `sqlite3` module that can load extensions (sqlite-vec). The pyth
 ## Setup
 
 Open Settings (gear icon, bottom left) and paste your API key from [build.nvidia.com](https://build.nvidia.com). The chat, embedding, rerank and parse models can be changed there too, and so can the endpoint URLs (base, rerank and parse), the rate limit, the system prompt, question paraphrasing, the retrieval sizes and the chunking and OCR thresholds. "Reset to defaults" restores everything except the API key. The free tier allows 40 requests per minute across all models; the app throttles itself to stay under it. Chunk settings apply to documents indexed after the change.
+
+Logs: `uv run localrag` prints one timestamped log line per request to the console, and a line for each retry and indexing result. The Windows exe has no console and shows no logs.
 
 App data lives in `~/Library/Application Support/LocalRAG` on macOS and `%APPDATA%\LocalRAG` on Windows.
 

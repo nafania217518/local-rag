@@ -7,6 +7,9 @@ Branch `feature/nemotron-3.5-parse`, 2026-10-30. Mode `none`: the user asked for
 - BR-1: Scanned pages MUST be read by the hosted `nvidia/nemotron-3.5-parse` model instead of the chat-endpoint `nvidia/nemotron-parse` (v1).
 - BR-2: An install upgraded from 0.1.5 MUST keep working without a manual settings change.
 - BR-3: The OCR text in the index MUST keep every cell of a table and every number as written on the page.
+- BR-4: Indexing MUST survive a server rejection of one embedding batch.
+- BR-5: The console MUST show the cause of an indexing failure.
+- BR-6: A failed document MUST show its error in the UI on request.
 
 ## Technical requirements
 
@@ -21,8 +24,16 @@ Branch `feature/nemotron-3.5-parse`, 2026-10-30. Mode `none`: the user asked for
 | TR-7 | opus | nested merged cells (`\multicolumn{..}{..}{\multirow{..}{..}{X}}`) unwrap to `X` | BR-3 (review finding) |
 | TR-8 | opus | `<sup>N</sup>` renders as `^N`, so `10<sup>6</sup>` stays `10^6` and not `106` | BR-3 (review finding) |
 | TR-9 | opus | two redundant tests (empty-string content, plain returns-content) are removed | review finding |
+| TR-10 | opus | `embed` MUST split a batch of more than one text in halves and embed each half when the request gets a 5xx, recursively down to single texts; the returned vectors MUST keep the input order. A single text keeps the backoff retries on 5xx; a 429 keeps the backoff at every size and does not split | BR-4 |
+| TR-11 | opus | every outgoing NVIDIA request MUST log one INFO line with its kind, model, size and seconds on success; every retry MUST log a WARNING with the HTTP status, the server message (response body, first 200 chars), the attempt and the wait; every split MUST log a WARNING with the batch size and status | BR-5 |
+| TR-12 | opus | `index_document` MUST log INFO at start (document id and name) and at the end (pages, OCR pages), ERROR with the exception and its traceback when indexing fails, and INFO (not ERROR) when the document was deleted during indexing | BR-5 |
+| TR-13 | opus | `app.main` MUST configure console logging once before the server starts: level INFO, format `%(asctime)s %(levelname)s %(name)s: %(message)s`, stream `sys.stderr`, the `httpx` logger at WARNING; when `sys.stderr` is None (Windows windowed exe) no handler is installed and `main` still works | BR-5 |
+| TR-14 | opus | in the documents list, the status dot of a failed row MUST be a button (aria-label "Show error") that opens a dialog with the document name and the full error text; the dot of a pending or indexed row stays a plain marker; the dialog has one Close button; the row tooltip keeps the error | BR-6 |
+| TR-15 | opus | when indexing fails on an HTTP error whose response has a body, the stored error MUST include that body (first 500 chars), so the dialog and the log show the server message | BR-5, BR-6 |
 
 ## Out of scope
 
 - A warning when `finish_reason` is `length` (output cut at 9000 tokens); no page in the probe corpus came near the cap.
+- A log file: logs go to the console only (chosen 2026-10-30).
+- A change of `EMBED_BATCH` (stays 64).
 - `&` outside tables and `\\` inside `\thead{}`; not seen in the model output.

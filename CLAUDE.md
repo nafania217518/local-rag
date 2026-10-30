@@ -40,4 +40,6 @@
 - A saved parse_model of nemotron-parse or nemotron-parse-2.0 is migrated to the default at load, because those names 404 on the parse URL : DESIGN.md
 - Only a Windows x64 one-file exe is published (zip on a GitHub release, built by hand; CI runs tests only, on pull requests); one-file mode unpacks to a temp folder at every start : DESIGN.md
 - All tunables live in config.DEFAULTS (no module constants); chunk and OCR settings apply at indexing time only, a changed document must be deleted and added again : DESIGN.md
+- Hosted nemotron-3.5-embed-8b rejects some multi-input batches with 500 `service inference failed` (2 to 12 inputs fail, 1 and 16 pass, 64 flaky, probe 2026-10-30); the client splits a failed batch in halves down to single texts : DESIGN.md
+- Logs go to stderr only (no log file), so the Windows exe, which has no console, shows none : DESIGN.md
 - Question paraphrasing costs one extra chat request per question (four requests per question with rerank and the answer); a failed paraphrase call falls back to the original question : DESIGN.md
