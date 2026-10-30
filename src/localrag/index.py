@@ -4,6 +4,8 @@ import re
 import shutil
 from pathlib import Path
 
+import httpx
+
 from localrag import config, db, nvidia
 from localrag.parsers import parse_file
 
@@ -80,9 +82,9 @@ def store_file(conn, workspace_id, src_path, dest_root=None, name=None):
 
 
 def _error_text(exc):
-    text = str(exc)
-    body = getattr(getattr(exc, "response", None), "text", "")  # httpx errors keep the server message only here
-    return f"{text} - {body[:500]}" if body and body not in text else text
+    if isinstance(exc, httpx.HTTPStatusError):  # httpx errors keep the server message only in the body
+        return f"{exc} - {exc.response.text[:500]}"
+    return str(exc)
 
 
 def index_document(conn, cfg, document_id, *, embed=nvidia.embed, parse_page=nvidia.parse_page,

@@ -256,6 +256,25 @@ def test_tr15_failed_index_without_response_keeps_exception_text(conn, tmp_path)
     assert db.get_document(conn, doc_id)["error"] == "boom"
 
 
+def test_tr16_openai_error_text_is_not_duplicated(conn, tmp_path):
+    import httpx
+    import openai
+    doc_id = _pdf_doc(conn, tmp_path, ["Hello text page with enough chars"])
+    exc = openai.InternalServerError(
+        "Error code: 500 - {'message': 'service inference failed'}",
+        response=httpx.Response(500, json={"message": "service inference failed"},
+                                request=httpx.Request("POST", "http://x")),
+        body={"message": "service inference failed"})
+
+    def failing_embed(cfg, texts, input_type):
+        raise exc
+
+    with pytest.raises(openai.InternalServerError):
+        index.index_document(conn, {}, doc_id, embed=failing_embed, parse_page=lambda c, png: "OCR")
+    error = db.get_document(conn, doc_id)["error"]
+    assert error == str(exc) and error.count("service inference failed") == 1
+
+
 def test_index_records_pages_done_and_ocr_pages(conn, tmp_path):
     doc_id = _pdf_doc(conn, tmp_path, ["Hello text page with enough chars", None, "Third page with enough chars"])
     index.index_document(conn, {}, doc_id, embed=_embed, parse_page=lambda c, png: "OCR TEXT")
