@@ -44,3 +44,4 @@
 - Logs go to stderr only (no log file), so the Windows exe, which has no console, shows none : DESIGN.md
 - The chat model copies the language of a bare example in the paraphrase prompt (an English question got Ukrainian paraphrases); the example is a full question pair after the rules, with an explicit "language of the question, not of the example" clause : DESIGN.md
 - Question paraphrasing costs one extra chat request per question (four requests per question with rerank and the answer); a failed paraphrase call falls back to the original question : DESIGN.md
+- A Rosetta crash (rosetta error: invalid gdt selector index 5) can kill Wine's pip during the Docker build at random (2 of 3 runs on 2026-10-30, same image and settings as a passing run the day before); a rerun passes; scripts/build-windows.sh detects it from the build log : DESIGN.md

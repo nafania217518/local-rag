@@ -73,6 +73,12 @@ Live tests against the real NVIDIA endpoints run only when `NVIDIA_API_KEY` is s
 
 ## Build the Windows exe
 
+The script `scripts/build-windows.sh` runs the Docker build, checks the build log, smoke-tests the exe under Wine and writes `dist/LocalRAG-windows-x64.zip`. It stops with a reason when a step fails. Run it from the repo root:
+
+```
+scripts/build-windows.sh
+```
+
 On any machine with Docker (macOS, Linux or Windows; an amd64 image runs under emulation on Apple silicon):
 
 ```
@@ -90,6 +96,6 @@ uv run pyinstaller localrag.spec --noconfirm
 
 ## Release
 
-Releases are built by hand with one of the commands above and attached to a GitHub release. CI only runs the test suite on pull requests.
+Releases are built with `scripts/build-windows.sh` (or the Windows commands above). The zip is attached to a GitHub release. CI only runs the test suite on pull requests.
 
 See [DESIGN.md](DESIGN.md) for the design and the known caveats.
