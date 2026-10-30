@@ -10,6 +10,7 @@ Branch `feature/nemotron-3.5-parse`, 2026-10-30. Mode `none`: the user asked for
 - BR-4: Indexing MUST survive a server rejection of one embedding batch.
 - BR-5: The console MUST show the cause of an indexing failure.
 - BR-6: A failed document MUST show its error in the UI on request.
+- BR-7: Question paraphrases MUST use the formal technical terms of standards so that a question in everyday words finds the passage written in standard terms.
 
 ## Technical requirements
 
@@ -37,6 +38,8 @@ Branch `feature/nemotron-3.5-parse`, 2026-10-30. Mode `none`: the user asked for
 | TR-20 | opus | (replaced by TR-21) a single-text embed request gets 10 attempts with the backoff wait capped at 8 s; other calls keep 5 attempts | BR-4 (second finding: random single-input failures at about 40 % for long chunks) |
 | TR-21 | opus | `embed_attempts` setting in `config.DEFAULTS`, default 50, sets the attempts for a single-text embed request; the backoff wait stays capped at 8 s; other calls keep 5 attempts | BR-4 |
 | TR-22 | opus | the Settings dialog Connection group has an "Embed retries" number input (`name="embed_attempts"`, min 1) that round-trips | BR-4 |
+| TR-23 | opus | the Settings input "Paraphrases per question" (`name="paraphrases"`) accepts up to 10 (`max="10"`); the default stays 2 | BR-7 |
+| TR-24 | opus | the paraphrase prompt tells the chat model that the documents are technical standards and specifications and asks for the formal technical terms a standard uses instead of everyday words, with the example `варити труби` → `зварювати трубопроводи`; the same-language, one-per-line and no-numbering rules stay | BR-7 |
 
 ## Out of scope
 

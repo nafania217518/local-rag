@@ -124,7 +124,7 @@ Runs in a background thread per document. The UI polls document status.
 
 Sizes are settings (section 4.7); defaults in brackets.
 
-0. Paraphrase: when `paraphrase` is on, one chat call with reasoning off writes `paraphrases` (2) alternative phrasings of the question in its own language, one per line. Numbering, quotes, blanks and duplicates are stripped. If the call fails, the question runs alone. The queries are the original plus the paraphrases.
+0. Paraphrase: when `paraphrase` is on, one chat call with reasoning off writes `paraphrases` (2) alternative phrasings of the question in its own language, one per line. Numbering, quotes, blanks and duplicates are stripped. If the call fails, the question runs alone. The queries are the original plus the paraphrases. The corpus is technical documentation, so the prompt asks for the formal technical terms of standards instead of everyday words (for example, "варити труби" becomes "зварювати трубопроводи"). The Settings input allows 1 to 10 paraphrases.
 1. FTS5 `MATCH` per query, top `candidates` (30, BM25 order).
 2. Embed all queries in one call with `input_type=query`, sqlite-vec KNN per vector, top `candidates` (30, cosine).
 3. Reciprocal Rank Fusion (`k=60`) over all FTS and vector rankings, top `rerank_candidates` (20).
