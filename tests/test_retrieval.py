@@ -193,6 +193,17 @@ def test_tr24_paraphrase_prompt_asks_for_formal_technical_terms(cfg):
     assert content.endswith("Question: як варити труби?")
 
 
+def test_tr25_paraphrase_prompt_example_is_a_question_and_the_language_rule_follows_it(cfg):
+    cfg.update(paraphrase=True, paraphrases=2)
+    calls = []
+    paraphrase(cfg, "how to check welds?", fake_chat("p1\np2", calls))
+    content = calls[0][1][0]["content"]
+    example = "'Як варити труби?' becomes 'Як зварювати трубопроводи?'"
+    assert example in content
+    assert "not in the language of the example" in content
+    assert content.index(example) > content.index("No numbering")
+
+
 def test_paraphrase_strips_numbering_blanks_and_duplicates_and_caps_at_n(cfg):
     cfg.update(paraphrase=True, paraphrases=2)
     assert paraphrase(cfg, "q", fake_chat('1. A\n\n- B\nA\n"C"\nq\n')) == ["A", "B"]
