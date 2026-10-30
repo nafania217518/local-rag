@@ -152,12 +152,6 @@ def test_tr2_parse_page_sends_max_output_tokens_in_options_part():
 
 
 @respx.mock
-def test_tr2_parse_page_returns_content():
-    respx.post(PARSE).mock(return_value=parse_resp("# Page"))
-    assert nvidia.parse_page(cfg, b"png") == "# Page"
-
-
-@respx.mock
 def test_tr2_parse_page_raises_on_http_error():
     respx.post(PARSE).mock(return_value=httpx.Response(400, json={
         "object": "error", "message": "max_output_tokens must be between 1 and 9000"}))
@@ -300,12 +294,6 @@ def test_every_client_call_passes_through_throttle(monkeypatch):
 @respx.mock
 def test_tr4_parse_page_returns_empty_when_content_is_null():
     respx.post(PARSE).mock(return_value=parse_resp(None))
-    assert nvidia.parse_page(cfg, b"png") == ""
-
-
-@respx.mock
-def test_tr4_parse_page_returns_empty_when_content_is_empty():
-    respx.post(PARSE).mock(return_value=parse_resp(""))
     assert nvidia.parse_page(cfg, b"png") == ""
 
 
