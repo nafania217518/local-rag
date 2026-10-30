@@ -99,6 +99,48 @@ def test_index_document_marks_failed_on_error_and_reraises(conn, tmp_path):
     assert "boom" in row["error"]
 
 
+def _zero_embed(cfg, texts, input_type):
+    return [[0.0] * 4 for _ in texts]
+
+
+def _index_records(caplog):
+    return [(r.levelname, r.getMessage()) for r in caplog.records if r.name == "localrag.index"]
+
+
+def test_tr12_index_logs_start_and_result(conn, tmp_path, caplog):
+    caplog.set_level("INFO", logger="localrag.index")
+    doc_id = _stored(conn, tmp_path, "hello")
+    index.index_document(conn, {}, doc_id, embed=_zero_embed, parse_page=None)
+    assert _index_records(caplog) == [("INFO", f"indexing {doc_id} a.txt"),
+                                      ("INFO", f"indexed {doc_id} a.txt: 1 pages, 0 via OCR")]
+
+
+def test_tr12_failed_index_logs_error_with_exception_message(conn, tmp_path, caplog):
+    doc_id = _stored(conn, tmp_path, "hello")
+
+    def boom(cfg, texts, input_type):
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        index.index_document(conn, {}, doc_id, embed=boom)
+    errors = [r for r in caplog.records if r.name == "localrag.index" and r.levelname == "ERROR"]
+    assert [r.getMessage() for r in errors] == [f"indexing {doc_id} a.txt failed: boom"]
+    assert errors[0].exc_info[0] is RuntimeError
+
+
+def test_tr12_cancelled_index_logs_info_not_error(conn, tmp_path, caplog):
+    caplog.set_level("INFO", logger="localrag.index")
+    doc_id = _stored(conn, tmp_path, "hello")
+
+    def deleting_embed(cfg, texts, input_type):
+        db.delete_document(conn, doc_id)
+        return _zero_embed(cfg, texts, input_type)
+
+    with pytest.raises(index.Cancelled):
+        index.index_document(conn, {}, doc_id, embed=deleting_embed, parse_page=None)
+    assert _index_records(caplog)[1:] == [("INFO", f"indexing {doc_id} cancelled")]
+
+
 def test_index_document_zero_chunks_marks_indexed_without_embed(conn, tmp_path):
     doc_id = _stored(conn, tmp_path, "")
 
@@ -187,6 +229,50 @@ def test_index_sets_total_pages_before_parsing(conn, tmp_path):
 
     index.index_document(conn, {}, doc_id, embed=_embed, parse_page=fake_parse)
     assert seen == [2]
+
+
+def test_tr15_failed_index_stores_server_message_from_response_body(conn, tmp_path):
+    import httpx
+    doc_id = _pdf_doc(conn, tmp_path, [None])
+
+    def failing_parse(cfg, png):
+        raise httpx.HTTPStatusError("Server error '500' for url", request=httpx.Request("POST", "http://x"),
+                                    response=httpx.Response(500, json={"message": "service inference failed"}))
+
+    with pytest.raises(httpx.HTTPStatusError):
+        index.index_document(conn, {}, doc_id, embed=_embed, parse_page=failing_parse)
+    error = db.get_document(conn, doc_id)["error"]
+    assert error.startswith("Server error '500' for url - ") and "service inference failed" in error
+
+
+def test_tr15_failed_index_without_response_keeps_exception_text(conn, tmp_path):
+    doc_id = _pdf_doc(conn, tmp_path, [None])
+
+    def failing_parse(cfg, png):
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        index.index_document(conn, {}, doc_id, embed=_embed, parse_page=failing_parse)
+    assert db.get_document(conn, doc_id)["error"] == "boom"
+
+
+def test_tr16_openai_error_text_is_not_duplicated(conn, tmp_path):
+    import httpx
+    import openai
+    doc_id = _pdf_doc(conn, tmp_path, ["Hello text page with enough chars"])
+    exc = openai.InternalServerError(
+        "Error code: 500 - {'message': 'service inference failed'}",
+        response=httpx.Response(500, json={"message": "service inference failed"},
+                                request=httpx.Request("POST", "http://x")),
+        body={"message": "service inference failed"})
+
+    def failing_embed(cfg, texts, input_type):
+        raise exc
+
+    with pytest.raises(openai.InternalServerError):
+        index.index_document(conn, {}, doc_id, embed=failing_embed, parse_page=lambda c, png: "OCR")
+    error = db.get_document(conn, doc_id)["error"]
+    assert error == str(exc) and error.count("service inference failed") == 1
 
 
 def test_index_records_pages_done_and_ocr_pages(conn, tmp_path):

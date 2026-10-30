@@ -1,10 +1,15 @@
 import hashlib
+import logging
 import re
 import shutil
 from pathlib import Path
 
+import httpx
+
 from localrag import config, db, nvidia
 from localrag.parsers import parse_file
+
+log = logging.getLogger(__name__)
 
 def _bodies(text, size):
     bodies, cur = [], ""
@@ -76,10 +81,19 @@ def store_file(conn, workspace_id, src_path, dest_root=None, name=None):
     return doc_id
 
 
+def _error_text(exc):
+    if isinstance(exc, httpx.HTTPStatusError):  # httpx errors keep the server message only in the body
+        return f"{exc} - {exc.response.text[:500]}"
+    return str(exc)
+
+
 def index_document(conn, cfg, document_id, *, embed=nvidia.embed, parse_page=nvidia.parse_page,
                    force_ocr=False):
+    name = None
     try:
         doc = db.get_document(conn, document_id)
+        name = doc["name"]
+        log.info("indexing %d %s", document_id, name)
         checked_parse = parse_page and (lambda c, png: (_check(conn, document_id), parse_page(c, png))[1])
         ocr, totals = [], []
 
@@ -99,9 +113,16 @@ def index_document(conn, cfg, document_id, *, embed=nvidia.embed, parse_page=nvi
             _check(conn, document_id)
             db.add_chunks(conn, document_id, doc["workspace_id"],
                           [(o, p, t, v) for (o, p, t), v in zip(chunks, vectors)])
-        db.set_document_status(conn, document_id, "indexed", pages=totals[-1] if totals else len(pages), ocr_pages=sum(ocr))
+        pages_total = totals[-1] if totals else len(pages)
+        db.set_document_status(conn, document_id, "indexed", pages=pages_total, ocr_pages=sum(ocr))
+        log.info("indexed %d %s: %d pages, %d via OCR", document_id, name, pages_total, sum(ocr))
+    except Cancelled:
+        log.info("indexing %d cancelled", document_id)
+        raise
     except Exception as exc:
-        db.set_document_status(conn, document_id, "failed", error=str(exc))
+        error = _error_text(exc)
+        log.exception("indexing %d %s failed: %s", document_id, name, error)
+        db.set_document_status(conn, document_id, "failed", error=error)
         raise
 
 

@@ -10,15 +10,17 @@ DEFAULTS = {
     "chat_model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
     "embed_model": "nvidia/nemotron-3.5-embed-8b",
     "rerank_model": "nvidia/nemotron-3.5-rerank-8b",
-    "parse_model": "nvidia/nemotron-parse",
+    "parse_model": "nvidia/nemotron-3.5-parse",
     "rerank": True,
     "paraphrase": True,
     "paraphrases": 2,
     "reasoning_effort": "none",
     "base_url": "https://integrate.api.nvidia.com/v1",
     "rerank_url": "https://ai.api.nvidia.com/v1/retrieval/{model}/reranking",
+    "parse_url": "https://ai.api.nvidia.com/v1/retrieval/{model}/parse",
     "rpm": 40,  # build.nvidia.com limit, shared by all models
     "timeout": 120.0,
+    "embed_attempts": 50,  # the 8b embed endpoint fails long single inputs at random
     "system_prompt": (
         "You answer questions about the user's documents.\n"
         "- Answer only from the numbered context passages.\n"
@@ -59,6 +61,9 @@ def load_config(path: Path | None = None) -> dict:
     cfg = dict(DEFAULTS)
     if path.exists():
         cfg.update(json.loads(path.read_text(encoding="utf-8")))
+    # an upgraded install keeps its saved config; the retired chat-endpoint parse models 404 on parse_url
+    if cfg["parse_model"] in ("nvidia/nemotron-parse", "nvidia/nemotron-parse-2.0"):
+        cfg["parse_model"] = DEFAULTS["parse_model"]
     return cfg
 
 

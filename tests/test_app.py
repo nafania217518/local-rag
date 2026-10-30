@@ -2,6 +2,7 @@ import socket
 import types
 
 import httpx
+import pytest
 
 from localrag import api, app
 from test_api import fake_chat_stream, fake_embed, fake_parse, fake_rerank
@@ -45,11 +46,49 @@ class FakeWebview:
         self.started = True
 
 
+@pytest.fixture(autouse=True)
+def no_configure_logging(request, monkeypatch):
+    # the real one sets the httpx logger to WARNING for the rest of the session
+    if not request.node.name.startswith("test_tr13"):
+        monkeypatch.setattr(app, "configure_logging", lambda: None)
+
+
 def run_main(ready, argv=None):
     server, wv = types.SimpleNamespace(should_exit=False), FakeWebview()
     code = app.main(argv, make_app=lambda: "app", serve=lambda a, p: server,
                     wait_ready=lambda url: ready, webview=wv)
     return code, server, wv
+
+
+def test_tr13_configure_logging_installs_stderr_handler_at_info(monkeypatch):
+    import logging
+    import sys
+    calls = []
+    monkeypatch.setattr(logging, "basicConfig", lambda **kw: calls.append(kw))
+    monkeypatch.setattr(logging.getLogger("httpx"), "level", logging.NOTSET)
+    app.configure_logging()
+    assert calls == [{"level": logging.INFO, "format": "%(asctime)s %(levelname)s %(name)s: %(message)s",
+                      "stream": sys.stderr}]
+    assert logging.getLogger("httpx").level == logging.WARNING
+
+
+def test_tr13_configure_logging_skips_when_stderr_is_none(monkeypatch):
+    import logging
+    import sys
+    calls = []
+    monkeypatch.setattr(sys, "stderr", None)
+    monkeypatch.setattr(logging, "basicConfig", lambda **kw: calls.append(kw))
+    monkeypatch.setattr(logging.getLogger("httpx"), "level", logging.NOTSET)
+    app.configure_logging()
+    assert calls == [] and logging.getLogger("httpx").level == logging.NOTSET
+
+
+def test_tr13_main_configures_logging(monkeypatch):
+    calls = []
+    monkeypatch.setattr(app, "configure_logging", lambda: calls.append(1))
+    run_main(True)
+    app.main(["--serve", "1"], make_app=lambda: "app", run=lambda a, p: None)
+    assert calls == [1, 1]
 
 
 def test_main_creates_window_and_stops_server():

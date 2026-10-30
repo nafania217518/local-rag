@@ -100,6 +100,19 @@ def test_settings_dialog_saves_api_key(page, server):
     assert httpx.get(f"{server}/settings").json()["api_key"] == "nvapi-test"
 
 
+def test_tr5_settings_dialog_saves_parse_url_after_rerank_url(page, server):
+    page.goto(server)
+    page.click("#settings-btn")
+    expect(page.locator('#settings fieldset:has(legend:text("Connection")) label:has([name="rerank_url"]) + label'
+                        ' [name="parse_url"]')).to_be_visible()
+    page.fill('#settings [name="parse_url"]', "https://example.test/{model}/parse")
+    page.click("#settings-save")
+    expect(page.locator("#settings")).not_to_be_visible()
+    page.reload()
+    page.click("#settings-btn")
+    expect(page.locator('#settings [name="parse_url"]')).to_have_value("https://example.test/{model}/parse")
+
+
 def test_settings_saves_paraphrase_toggle_and_count(page, server):
     page.goto(server)
     page.click("#settings-btn")
@@ -110,6 +123,20 @@ def test_settings_saves_paraphrase_toggle_and_count(page, server):
     expect(page.locator("#settings")).not_to_be_visible()
     got = httpx.get(f"{server}/settings").json()
     assert got["paraphrase"] is False and got["paraphrases"] == 3 and type(got["paraphrases"]) is int
+
+
+def test_tr23_settings_saves_ten_paraphrases(page, server):
+    page.goto(server)
+    page.click("#settings-btn")
+    expect(page.locator("#settings")).to_be_visible()
+    assert page.get_attribute('#settings [name="paraphrases"]', "max") == "10"
+    page.fill('#settings [name="paraphrases"]', "10")
+    page.click("#settings-save")
+    expect(page.locator("#settings")).not_to_be_visible()
+    page.click("#settings-btn")
+    expect(page.locator('#settings [name="paraphrases"]')).to_have_value("10")
+    got = httpx.get(f"{server}/settings").json()
+    assert got["paraphrases"] == 10 and type(got["paraphrases"]) is int
 
 
 def test_failed_document_shows_error(page, server):
@@ -426,6 +453,34 @@ def _stub_docs(page, server, docs):
     page.locator("#workspaces li").last.click()
 
 
+_TR14_ERROR = "Error code: 500 - service inference failed " * 5
+_TR14_DOCS = [
+    {"id": 1, "name": "p.pdf", "status": "pending", "error": None, "pages": None, "pages_done": None},
+    {"id": 2, "name": "i.pdf", "status": "indexed", "error": None, "pages": 1, "ocr_pages": 0},
+    {"id": 3, "name": "f.pdf", "status": "failed", "error": _TR14_ERROR, "pages": None}]
+
+
+def test_tr14_failed_row_dot_opens_error_dialog_with_message(page, server):
+    _stub_docs(page, server, _TR14_DOCS)
+    page.click("#documents li[data-id='3'] button.status")
+    dialog = page.locator("#error-dialog")
+    expect(dialog).to_be_visible()
+    expect(page.locator("#error-title")).to_have_text("f.pdf")
+    expect(page.locator("#error-text")).to_have_text(_TR14_ERROR)
+    dialog.get_by_role("button", name="Close").click()
+    expect(dialog).to_be_hidden()
+
+
+def test_tr14_indexed_and_pending_dots_are_not_buttons(page, server):
+    _stub_docs(page, server, _TR14_DOCS)
+    for i in (1, 2):
+        row = page.locator(f"#documents li[data-id='{i}']")
+        expect(row.locator("span.status")).to_have_count(1)
+        expect(row.locator("button.status")).to_have_count(0)
+    failed = page.locator("#documents li[data-id='3'] button.status")
+    expect(failed).to_have_attribute("aria-label", "Show error")
+
+
 def test_pending_row_shows_page_progress(page, server):
     _stub_docs(page, server, [
         {"id": 1, "name": "a.pdf", "status": "pending", "error": None, "pages": 170, "pages_done": 34},
@@ -516,6 +571,18 @@ def test_settings_saves_numbers_as_numbers(page, server):
     cfg = httpx.get(f"{server}/settings").json()
     assert cfg["sources"] == 4 and type(cfg["sources"]) is int
     assert cfg["temperature"] == 0.2
+
+
+def test_tr22_settings_saves_embed_attempts(page, server):
+    page.goto(server)
+    page.click("#settings-btn")
+    page.fill('#settings [name="embed_attempts"]', "7")
+    page.click("#settings-save")
+    expect(page.locator("#settings")).not_to_be_visible()
+    page.click("#settings-btn")
+    expect(page.locator('#settings [name="embed_attempts"]')).to_have_value("7")
+    cfg = httpx.get(f"{server}/settings").json()
+    assert cfg["embed_attempts"] == 7 and type(cfg["embed_attempts"]) is int
 
 
 def test_settings_reset_restores_defaults_but_keeps_api_key(page, server):

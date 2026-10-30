@@ -30,13 +30,13 @@ All calls use one API key (`NVIDIA_API_KEY`) as a Bearer token.
 | Chat | `nvidia/nemotron-3.5-super-vl-120b-a12b` | `POST https://integrate.api.nvidia.com/v1/chat/completions` | 1M context, 120B MoE with 12B active, free hosted endpoint (the backend serves the text Super 3.5 model). Live-tested 2026-10-28: correct Ukrainian and Russian answers with [n] citations in about 1 s. `reasoning_effort: "none"` accepted and disables thinking. `stream: true` for SSE |
 | Embeddings | `nvidia/nemotron-3.5-embed-8b` | `POST https://integrate.api.nvidia.com/v1/embeddings` | Max 10240 tokens per input, 4096 dims, L2-normalized. Evaluated on 34 text languages (Ukrainian and Russian included). `input_type` is required: `passage` for indexing, `query` for questions. `truncate: END` |
 | Rerank | `nvidia/nemotron-3.5-rerank-8b` | `POST https://ai.api.nvidia.com/v1/retrieval/nvidia/nemotron-3.5-rerank-8b/reranking` | Same 34 languages as the embed model. Not OpenAI-shaped: body is `{model, query:{text}, passages:[{text}], truncate:"END"}`, max 512 passages |
-| OCR / page parse | `nvidia/nemotron-parse` | `POST https://integrate.api.nvidia.com/v1/chat/completions` | One page image per request as a base64 `image_url` content part. Returns the page as a `markdown_bbox` tool call: a JSON list of elements with `bbox`, `text`, `type` in reading order; the client joins the texts. `max_tokens` 3500. Live-tested 2026-10-28. `nemotron-parse-2.0` is the successor, but its hosted endpoint returned 502 upstream all day; the client also accepts plain `content`, so switching is a setting |
+| OCR / page parse | `nvidia/nemotron-3.5-parse` | `POST https://ai.api.nvidia.com/v1/retrieval/nvidia/nemotron-3.5-parse/parse` | Not OpenAI-shaped and not a chat model. Request: `multipart/form-data` with a `document` part (one PNG or JPEG page image, `page.png`; the whole request stays under 100 MiB) and an `options` part (JSON `{"decoding": {"max_output_tokens": 9000}}`). `decoding.max_output_tokens` is the only option; its range is 1 to 9000 (400 above). No `model` field in the body. Response: `{content, finish_reason, usage}`. `content` is one string of page elements in reading order, each as `<x_0.11><y_0.08>TEXT<x_0.93><y_0.12><class_Text>` (normalized box corners and a class token). `finish_reason` is `length` when the output hits the cap. The client strips the box and class tokens. Token cap 9000. Live-tested 2026-10-30 |
 
-Why parse instead of the OCR NIM: the hosted `nemoretriever-ocr-v1` endpoint is deprecated, and `nemotron-ocr-v2` returns word boxes, not reading-order text. `nemotron-parse` runs through the same chat endpoint and returns page Markdown. One client, one auth path.
+Why parse instead of the OCR NIM: the hosted `nemoretriever-ocr-v1` endpoint is deprecated, and `nemotron-ocr-v2` returns word boxes, not reading-order text. The OCR path uses the dedicated parse endpoint on `ai.api.nvidia.com`, the same host as rerank. On 2026-10-30 it replaced the chat-endpoint `nemotron-parse` (v1) with `nemotron-3.5-parse`. The old client shape (chat completions with an image part) no longer applies. One auth path: the same Bearer key.
 
-Rate limit: build.nvidia.com allows 40 requests per minute in total, across all models. `nvidia.py` enforces one global sliding-window throttle (`rpm` setting, default 40, thread-safe) that every outgoing request passes through, and retries 429 and 5xx responses with exponential backoff (1, 2, 4, 8 s, or the `Retry-After` header), at most 5 attempts. The SDK's own retries are off. Consequence for ingestion: a scanned 30-page PDF costs about 31 requests (30 parse calls plus one embed batch), so about one such document per minute. The UI shows per-document status so this is visible, not silent.
+Rate limit: build.nvidia.com allows 40 requests per minute in total, across all models. `nvidia.py` enforces one global sliding-window throttle (`rpm` setting, default 40, thread-safe) that every outgoing request passes through, and retries 429 and 5xx responses with exponential backoff (1, 2, 4, 8 s, or the `Retry-After` header), at most 5 attempts. The SDK's own retries are off. The embedding endpoint also rejects some multi-text batches with a 5xx at once (see 9.7), and a retry cannot fix that. `nvidia.embed` still sends 64 texts per request. When a batch of more than one text gets a 5xx, the client splits it in halves, embeds each half and repeats down to single texts, in input order. A single text gets `embed_attempts` attempts (setting, default 50) with the backoff wait capped at 8 s; the worst case is about 6.5 minutes per stubborn chunk (see 9.7); every other call keeps 5 attempts. A 429 keeps the backoff at every batch size and does not split. The split is a binary tree, so one 64-text batch costs at most 2n-1 = 127 requests (about 3 minutes at 40 rpm) when every size fails; with the probed sizes (16 passes) a failed 64-batch costs 3 to 7 requests. Consequence for ingestion: a scanned 30-page PDF costs about 31 requests (30 parse calls plus one embed batch), so about one such document per minute. The UI shows per-document status so this is visible, not silent.
 
-The OpenAI Python SDK handles chat, embeddings and parse (`base_url="https://integrate.api.nvidia.com/v1"`, `extra_body={"input_type": ...}` for embeddings). Rerank is one `httpx.post`.
+The OpenAI Python SDK handles chat and embeddings (`base_url="https://integrate.api.nvidia.com/v1"`, `extra_body={"input_type": ...}` for embeddings). Rerank and parse are each one `httpx.post`.
 
 Why 8b and not 1b for embeddings: the 1b model is a distillation of the 8b model. On ViDoRe V3 text retrieval the 8b scores 60.65 nDCG@10 against 57.80 for the 1b. Both run on the same hosted endpoint, so the only local cost is vector size (4096 vs 2048 floats). For 100 documents that is about 160 MB on disk. Accuracy wins.
 
@@ -71,6 +71,16 @@ pywebview window  ──HTTP/SSE──▶  FastAPI (uvicorn, background thread, 
 
 Package: `src/localrag/`. UI: `src/localrag/static/index.html` (vanilla HTML/CSS/JS, no build step). Launcher: `src/localrag/app.py` picks a free localhost port, starts uvicorn in a daemon thread, waits for `/health`, then `webview.create_window(url)` and `webview.start()`; closing the window stops the server. Every blocking collaborator is injectable so the launcher has unit tests without a window.
 
+Logging: `app.main` calls `configure_logging()` first. It sets the Python `logging` root to INFO with the format `%(asctime)s %(levelname)s %(name)s: %(message)s`, writes to stderr and sets the `httpx` logger to WARNING. It installs the handler only when `sys.stderr` exists. The Windows one-file exe has no console, so it logs nothing, and the launcher still prints nothing. The log holds:
+- one INFO line per NVIDIA request on success: `<kind> <model> x<size>: ok in <s>s` (kinds chat, embed, rerank, parse); the seconds include the throttle wait and any retries, and for chat they run to the first byte of the stream, not to its end;
+- a WARNING per retry (status, server message, attempt, wait);
+- a WARNING per embedding batch split (`splitting into 32 + 32`);
+- INFO when a document starts and finishes indexing (pages, OCR pages);
+- ERROR with traceback when indexing fails;
+- INFO when indexing stops because the document was deleted.
+
+A 125-page scan writes about 130 lines. There is no log file; the console is the only sink (decided 2026-10-30).
+
 Packaging: `localrag.spec` at the repo root, one-file PyInstaller build (`uv run pyinstaller localrag.spec`). Output: `dist/LocalRAG.exe` on Windows (one fat executable; on macOS the same spec gives `dist/LocalRAG`, used only for local checks, never published). The spec collects `static/`, the sqlite-vec `vec0` library (no community hook), names `webview` as a hidden import (app.py loads it through importlib), and excludes the optional PyMuPDF layout stack (`pymupdf.layout`, onnxruntime, numpy, networkx, psutil; about 170 MB and its ONNX resources are not collected). `LocalRAG --serve <port>` runs the server without a window; it serves as the smoke check of a build. Releases are built by hand on Windows and the zip `LocalRAG-windows-x64.zip` is attached to a GitHub release; CI runs only the test suite, on pull requests to `master`. The exe is not code-signed; Windows SmartScreen will warn.
 
 ### 4.1 Storage (local)
@@ -100,7 +110,7 @@ FTS5 is compiled into the Python 3.12+ `sqlite3` module on macOS and Windows. St
 
 1. Copy file into the files folder, insert `documents` row with `status=pending`.
 2. Parse → list of `(page, text)`:
-   - PDF: PyMuPDF `page.get_text()`. If a page has fewer than `min_text_chars` (20) characters of text, render it to PNG at `render_dpi` (150) and send it to the parse model (`parse_model` setting). Per-page decision, so mixed PDFs work.
+   - PDF: PyMuPDF `page.get_text()`. If a page has fewer than `min_text_chars` (20) characters of text, render it to PNG at `render_dpi` (150) and send it to the parse model (`parse_model` and `parse_url` settings). Per-page decision, so mixed PDFs work.
    - DOCX: `python-docx` paragraphs and table cells, page = 1.
    - TXT/MD: whole file, page = 1.
    - Parsers are a dict `{".pdf": parse_pdf, ...}`; a new format is one new entry (open-closed).
@@ -114,7 +124,7 @@ Runs in a background thread per document. The UI polls document status.
 
 Sizes are settings (section 4.7); defaults in brackets.
 
-0. Paraphrase: when `paraphrase` is on, one chat call with reasoning off writes `paraphrases` (2) alternative phrasings of the question in its own language, one per line. Numbering, quotes, blanks and duplicates are stripped. If the call fails, the question runs alone. The queries are the original plus the paraphrases.
+0. Paraphrase: when `paraphrase` is on, one chat call with reasoning off writes `paraphrases` (2) alternative phrasings of the question in its own language, one per line. Numbering, quotes, blanks and duplicates are stripped. If the call fails, the question runs alone. The queries are the original plus the paraphrases. The corpus is technical documentation, so the prompt asks for the formal technical terms of standards instead of everyday words, with one Ukrainian example given as a full question ("Як варити труби?" becomes "Як зварювати трубопроводи?") after the rules, and it says to write in the language of the question, not of the example: a bare example made the model answer English questions in Ukrainian (probe 2026-10-30). The Settings input allows 1 to 10 paraphrases.
 1. FTS5 `MATCH` per query, top `candidates` (30, BM25 order).
 2. Embed all queries in one call with `input_type=query`, sqlite-vec KNN per vector, top `candidates` (30, cosine).
 3. Reciprocal Rank Fusion (`k=60`) over all FTS and vector rankings, top `rerank_candidates` (20).
@@ -160,8 +170,10 @@ Three columns: workspaces + documents list (left), chat with a session selector 
 | Connection | `api_key` | `""` |
 | Connection | `base_url` | `https://integrate.api.nvidia.com/v1` |
 | Connection | `rerank_url` | `https://ai.api.nvidia.com/v1/retrieval/{model}/reranking` |
+| Connection | `parse_url` | `https://ai.api.nvidia.com/v1/retrieval/{model}/parse` |
 | Connection | `rpm` | 40 |
 | Connection | `timeout` | 120 s |
+| Connection | `embed_attempts` | 50 |
 | Models | `chat_model`, `embed_model`, `rerank_model`, `parse_model` | see section 3 |
 | Chat | `system_prompt` | the prompt in section 4.4 |
 | Chat | `temperature` | 0.2 |
@@ -180,7 +192,7 @@ Three columns: workspaces + documents list (left), chat with a session selector 
 | Indexing | `min_text_chars` | 20 |
 | Indexing | `render_dpi` | 150 |
 
-Kept hardcoded: the RRF constant, retries and backoff, the embed batch size, the OCR token cap, the embedding dimension. Chunk and OCR settings apply at indexing time only: a document indexed before the change keeps its chunks until it is deleted and added again (the scan button re-indexes too, but forces OCR).
+Kept hardcoded: the RRF constant, retries and backoff, the embed batch size, the OCR token cap (9000), the embedding dimension. `load_config` replaces a saved `parse_model` of `nvidia/nemotron-parse` or `nvidia/nemotron-parse-2.0` with the default, because those names return 404 on the parse URL. Chunk and OCR settings apply at indexing time only: a document indexed before the change keeps its chunks until it is deleted and added again (the scan button re-indexes too, but forces OCR).
 
 ### 4.8 Languages
 
@@ -190,7 +202,7 @@ Limits to know:
 - FTS5 uses the `unicode61` tokenizer with `remove_diacritics 2`. It matches exact tokens in any script and does no stemming (the `porter` stemmer is English only). Inflected languages lose some keyword recall; the vector path and the reranker cover that.
 - The chat model is the only language-limited component. Every Nemotron chat model lists Western European languages, Japanese and Chinese, none lists Ukrainian. The default is `nvidia/nemotron-3.5-super-vl-120b-a12b`: despite its official list it answered Ukrainian and Russian RAG questions correctly in the live probe (see the table in section 3). The system prompt tells the model to answer in the language of the question. Lightning is the fast fallback; Qwen3-Next if it gets a free endpoint.
 - `tests/test_live_languages.py` (opt-in, needs `NVIDIA_API_KEY`): one Ukrainian question over a Ukrainian passage, one Russian, one cross-lingual (English question, Ukrainian passage). All three passed on 2026-10-28.
-- Scanned pages: `nemotron-parse` verified live on 2026-10-28 on Ukrainian scans (see 9.5).
+- Scanned pages: `nemotron-parse` (v1) verified live on 2026-10-28 on Ukrainian scans (see 9.5); `nemotron-3.5-parse` verified live on 2026-10-30 (see 9.6).
 
 ### 4.9 SOLID mapping
 
@@ -237,7 +249,7 @@ Local models, translation layer, images in answers, document editing, multi-user
 
 ## 8. Caveats found during research
 
-- `nemoretriever-ocr-v1` hosted endpoint is deprecated. Scanned pages go through the chat endpoint with `nemotron-parse` (v1), which answers as a `markdown_bbox` tool call. `nemotron-parse-2.0` is the successor, but its hosted context is 4096 tokens (`max_tokens` above that is a 400) and its endpoint returned 502 upstream on 2026-10-28.
+- `nemoretriever-ocr-v1` hosted endpoint is deprecated. Scanned pages go to `nemotron-3.5-parse` through the multipart parse endpoint on `ai.api.nvidia.com` (not chat completions). `nemotron-parse` (v1) on the chat endpoint was replaced on 2026-10-30; `nemotron-parse-2.0` returned 502 upstream on 2026-10-28 and is not used. A saved config with an old parse model name is migrated to the default at load.
 - `nemotron-3.5-embed-8b` requires `input_type`; wrong mode silently degrades retrieval.
 - The vec0 table fixes the embedding dimension (4096). Changing the embed model requires a full re-index.
 - Rerank is not on the OpenAI base URL; it lives on `ai.api.nvidia.com/v1/retrieval/...`.
@@ -247,6 +259,7 @@ Local models, translation layer, images in answers, document editing, multi-user
 - pywebview docs suggest py2app on macOS; PyInstaller also works and is the single tool used here.
 - No Nemotron chat model on the catalog lists Ukrainian in its hosted model card, yet Super VL and Lightning answered Ukrainian and Russian correctly in the live probe. Qwen3-Next lists Ukrainian but has no free hosted endpoint. DeepSeek V4 Flash is end of life (410).
 - Hosted model ids churn: DeepSeek V4 Flash disappeared within months. The chat model is a setting; the Settings dialog should show the error text from the API so a 410 is understood.
+- `nemotron-3.5-embed-8b` rejects some multi-text batches at once with `500 service inference failed` (2026-10-30 probe: 2 to 12 texts fail, 1 and 16 pass, 64 are flaky). Backoff retries cannot help; the client splits a failed batch in halves down to single texts (see 9.7).
 - Provider limit is 40 requests per minute for all models together. The throttle is global per process; two app instances would share nothing and could exceed it.
 - PyMuPDF 2.0 depends on `pymupdf-layout` and `onnxruntime` and activates the layout model at import. The bundle excludes them; `import pymupdf.layout` then raises ImportError, which PyMuPDF catches. Verified: text PDF parses in the frozen app.
 - sqlite-vec has no PyInstaller hook; `collect_dynamic_libs("sqlite_vec")` ships `vec0` next to the package so `sqlite_vec.load` finds it.
@@ -258,7 +271,7 @@ Local models, translation layer, images in answers, document editing, multi-user
 
 ## 9. Feature: OCR pass for scanned documents
 
-Status: planned 2026-10-28, branch `feature/ocr-pass`. Quiz answers: OCR runs for pages without a text layer (as now), for pages whose text layer is broken, and on demand for a whole document; engine stays the hosted `nemotron-parse`; the UI shows page progress; OCR text goes to the index only.
+Status: planned 2026-10-28, branch `feature/ocr-pass`. Quiz answers: OCR runs for pages without a text layer (as now), for pages whose text layer is broken, and on demand for a whole document; engine stays the hosted `nemotron-parse` (moved to `nemotron-3.5-parse` on 2026-10-30, see 9.6); the UI shows page progress; OCR text goes to the index only.
 
 ### 9.1 What exists
 
@@ -287,6 +300,7 @@ API, in `api.py`: `POST /workspaces/{ws}/documents/{id}/ocr` → 202 with the do
 UI, in `index.html`:
 - Pending row: the amber dot keeps pulsing; a small pencil-colored `34 / 170` appears after the name while `pages` is known; the tooltip says `Indexing, page 34 of 170`.
 - Indexed row: tooltip `Indexed` or `Indexed, 12 pages via OCR`.
+- Failed row: the red dot is a button (aria-label `Show error`). It opens a dialog with the document name, the full error text and one Close button. The pending and indexed dots stay plain markers. The row tooltip keeps the error. When indexing fails on an HTTP error with a response body, the stored `error` holds the exception text plus the first 500 characters of the body, so the dialog and the log show the server message.
 - Row action: a scan icon button (aria-label `Run OCR`) next to the × on hover. It opens a confirm dialog: `Run OCR on <name>? All 170 pages are sent to the parse model, about 5 minutes.` (minutes = pages / 40, rounded up) with Run OCR and Cancel. The row returns to pending and polling resumes.
 
 Rate limit consequence: force mode on a 170-page document is 170 parse requests plus about 6 embed requests, about 4.5 minutes at 40 rpm, and it blocks nothing else except the shared throttle.
@@ -327,6 +341,38 @@ Calibration on 2026-10-28 over the three НАЕК standards (433 pages, kept out
 
 Consequences built into phase 4: in redo mode the OCR text replaces the layer only when it is at least half as long and scores higher; the no-text and force cases replace unconditionally. LaTeX table markup from the model is flattened to `cell | cell` rows in `nvidia._clean`. Known limit: the model sometimes writes Latin look-alike letters inside Ukrainian words; the quality score sees those as mixed script, which is why OCR output scores below 1.0.
 
+### 9.6 Live results (2026-10-30), nemotron-3.5-parse
+
+The OCR path moved to `nvidia/nemotron-3.5-parse` on the parse endpoint. The probe used the same pages as 9.5 (standards in `../test_pdf_docs/`), rendered at 150 dpi, one page per request.
+
+| Page | Text layer (score, chars) | nemotron-3.5-parse | Note |
+|---|---|---|---|
+| 160 p10 (body) | 1.00, 2874 ch | 200 in 12 s, 2489 tokens, 3692 ch with tokens; `test_live_parse_reads_ukrainian_scanned_page` passed through the new client | all body text present, Ukrainian correct; elements Page-header, Text, Section-header, Picture (the Picture held the page number) |
+| 158 p122 (large table) | 0.50, 4984 ch | 200 in 9 s, 953 tokens; cleaned 1.00, 860 ch | full table as LaTeX `tabular`, caption `Таблиця К.4` and running header; v1 returned 17 ch here, this limit is gone |
+| 158 p97 (form tables) | n/a | 200 in 12 s | four `tabular` blocks and a Footnote element; cell text correct |
+| 160 p1 (cover) | 0.50 (spaced letters) | 200 in 4 s; cleaned 0.98, 487 ch | Title and Text elements, correct Ukrainian (v1 scored 0.67); the logo text came back as a Picture element |
+
+Tables still come as LaTeX `tabular`, now with `\thead{...}` around header cells and `\mbox{}` for empty cells. `nvidia._clean` strips the box and class tokens, unwraps `\thead` and nested `\multirow`/`\multicolumn` cells, drops `\mbox{}`, renders `<sup>N</sup>` as `^N` (so `кгс/см<sup>2</sup>` stays `кгс/см^2`, not `кгс/см2`) and flattens the tabular to `cell | cell` rows. Latin look-alike letters still appear in some table cells (`МІЛА` for `МПа`, `Нознака` for `Познака`); the quality score still sees those as mixed script. The redo-mode guard stays: the OCR text replaces the layer only when it is at least half as long and scores higher.
+
+### 9.7 Embedding failure and logs (2026-10-30)
+
+Finding: indexing a 125-page scan failed with `Error code: 500 - service inference failed` after all pages were parsed. The 500 came from the hosted embedding endpoint `nvidia/nemotron-3.5-embed-8b` (`POST https://integrate.api.nvidia.com/v1/embeddings`), not from the parse endpoint. A rejection is not a timeout: it returns in 0.3 s with the body `{"object":"error","message":"service inference failed","type":"server_error"}`. The NVIDIA status page showed no incident. English and Cyrillic text and the `passage` and `query` input types behave the same. The same pair of texts passes on `nvidia/nemotron-3.5-embed-1b`. Five backoff retries cannot help a deterministic rejection.
+
+| Inputs per request | Result on the chunks of this document |
+|---|---|
+| 1 | passes every time |
+| 2 to 12 | fails every time, within 0.3 s |
+| 16 | passes |
+| 64 (the app batch size) | depends on the batch: the first batch of this document failed 4 of 5 times, a later one passed 2 of 3 |
+
+Fix (TR-10): the client splits a failed batch in halves, as described in section 3. `EMBED_BATCH` stays 64.
+
+Second finding, later the same day: single-text requests started to fail at random as well. Measured at 13:28 with one request per text, 12 to 8 repeats each: a 368-token chunk and a 337-token chunk never failed; a 943-token chunk failed 5 of 12 times on `embed-8b` and 0 of 8 times on `embed-1b`. So the failure is random, depends on the input length and is specific to the hosted 8b deployment. The live run of the split (13:21 to 13:24, 227 chunks) split correctly down to single texts, then one single text failed 5 times in a row and the run raised. With a 40 % failure rate and 5 attempts, a chunk still fails with about 1 % probability, and a document with about 100 long chunks fails more often than not. Fix (TR-21, which replaces TR-20): a single-text embed request gets `embed_attempts` attempts (setting, default 50) with the backoff wait capped at 8 s (1, 2, 4, 8, 8, ... s; 1 + 2 + 4 + 8 x 47 s, about 6.5 minutes at most per stubborn chunk). The document stays `pending` during the wait. The first fix used 10 attempts, but on 2026-10-30 one chunk got ten 500 responses in a row at 13:41 and the whole 125-page document had to be re-imported. Waiting is cheaper than a re-import. Other calls keep 5 attempts so a chat or parse error still surfaces within 15 s.
+
+Logging (TR-11 to TR-13): see section 4. Before this change the app logged nothing, and the only trace of the failure was the `error` column.
+
+Stored error (TR-15) and UI dialog (TR-14): see section 9.2. The failed row now shows the server message on request.
+
 ## Sources
 
 - https://build.nvidia.com/llms.txt — base URL, auth, OpenAI compatibility
@@ -358,7 +404,11 @@ Consequences built into phase 4: in redo mode the OCR text replaces the layer on
 - https://docs.api.nvidia.com/nim/reference/nvidia-llama-3_2-nv-embedqa-1b-v2-infer — `input_type` warning
 - https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3_5-rerank-8b-infer — rerank endpoint and body
 - https://docs.api.nvidia.com/nim/reference/nvidia-llama-nemotron-rerank-1b-v2-infer — rerank body shape (second source)
-- https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-parse-2_0-infer — parse via chat completions, one image per request
+- https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-parse-2_0-infer — parse-2.0 via chat completions, one image per request (history)
+- https://build.nvidia.com/nvidia/nemotron-3.5-parse — hosted endpoint, Python snippet with the multipart request
+- https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3_5-parse-infer — API reference: `document` and `options` parts, status codes 400/413/415/422/503/504
+- https://huggingface.co/nvidia/Nemotron-3.5-Parse — model card: architecture, control tokens, recommended max input 1664x2048, released 2026-10-17
+- https://docs.nvidia.com/nim/vision-language-models/1.7.0/examples/nemotron-parse/api.html — the older v1.2 NIM used chat completions with control-token prompts; shows why the old client shape no longer applies
 - https://build.nvidia.com/nvidia/nemoretriever-ocr — deprecation notice
 - https://docs.nvidia.com/nim/ingestion/image-ocr/latest/use-the-api.html — OCR NIM output shape (word boxes)
 - https://alexgarcia.xyz/sqlite-vec/python.html — macOS extension block, SQLite version notes
