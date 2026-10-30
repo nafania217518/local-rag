@@ -40,3 +40,8 @@ def test_ci_runs_tests_only_on_pull_requests():
 def test_windows_dockerfile_builds_the_spec_one_file_exe():
     assert all(s in DOCKERFILE for s in (
         "tobix/pywine:3.12", "pyinstaller localrag.spec", "FROM scratch", "/src/dist/LocalRAG.exe"))
+
+
+def test_tr1_dockerfile_wine_steps_fail_on_error():
+    wine_runs = [l for l in DOCKERFILE.splitlines() if l.startswith("RUN") and "wine " in l]
+    assert wine_runs and all("; rc=$?; wineserver -w; exit $rc'" in l for l in wine_runs)

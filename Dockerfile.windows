@@ -6,8 +6,8 @@ WORKDIR /src
 COPY pyproject.toml localrag.spec ./
 COPY src ./src
 # numpy>=2.2.2 calls ucrtbase crealf, unimplemented in this image's Wine 9; numpy is excluded from the exe anyway
-RUN umask 0 && xvfb-run sh -c "wine pip install --no-warn-script-location . 'numpy<2.2.2'; wineserver -w"
-RUN xvfb-run sh -c "wine pyinstaller localrag.spec --noconfirm; wineserver -w"
+RUN umask 0 && xvfb-run sh -c 'wine pip install --no-warn-script-location . "numpy<2.2.2"; rc=$?; wineserver -w; exit $rc'
+RUN xvfb-run sh -c 'wine pyinstaller localrag.spec --noconfirm; rc=$?; wineserver -w; exit $rc'
 
 FROM scratch AS export
 COPY --from=build /src/dist/LocalRAG.exe /
