@@ -125,6 +125,20 @@ def test_settings_saves_paraphrase_toggle_and_count(page, server):
     assert got["paraphrase"] is False and got["paraphrases"] == 3 and type(got["paraphrases"]) is int
 
 
+def test_tr23_settings_saves_ten_paraphrases(page, server):
+    page.goto(server)
+    page.click("#settings-btn")
+    expect(page.locator("#settings")).to_be_visible()
+    assert page.get_attribute('#settings [name="paraphrases"]', "max") == "10"
+    page.fill('#settings [name="paraphrases"]', "10")
+    page.click("#settings-save")
+    expect(page.locator("#settings")).not_to_be_visible()
+    page.click("#settings-btn")
+    expect(page.locator('#settings [name="paraphrases"]')).to_have_value("10")
+    got = httpx.get(f"{server}/settings").json()
+    assert got["paraphrases"] == 10 and type(got["paraphrases"]) is int
+
+
 def test_failed_document_shows_error(page, server):
     new_ws(page, server)
     upload(page, "b.xyz", b"junk")
