@@ -340,6 +340,12 @@ def test_tr3_parse_page_flattens_latex_table():
 
 
 @respx.mock
+def test_tr7_parse_page_unwraps_nested_merged_cells():
+    respx.post(PARSE).mock(return_value=parse_resp(r"\multicolumn{2}{c}{\multirow{2}{*}{X}} & b \\"))
+    assert nvidia.parse_page(cfg, b"png") == "X | b"
+
+
+@respx.mock
 def test_client_uses_base_url_and_timeout_from_config():
     c = {**cfg, "base_url": "http://local.test/v9", "timeout": 7.5}
     route = respx.post("http://local.test/v9/embeddings").mock(

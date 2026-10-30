@@ -125,7 +125,7 @@ _LATEX = [
     (re.compile(r"\\thead\{([^}]*)\}"), r"\1"),  # before multirow: it nests inside its braces
     (re.compile(r"\\mbox\{\}"), ""),
     (re.compile(r"\\(?:begin|end)\{tabular\}(?:\{[^}]*\})?"), ""),
-    (re.compile(r"\\multi(?:row|column)\{[^}]*\}\{[^}]*\}\{([^}]*)\}"), r"\1"),
+    (re.compile(r"\\multi(?:row|column)\{[^}]*\}\{[^}]*\}\{([^{}]*)\}"), r"\1"),
     (re.compile(r"\s*\\\\[ \t]*\n?"), "\n"),  # eat one newline only: keep the blank line between elements
     (re.compile(r"[ \t]*&[ \t]*"), " | "),  # spaces only: keep the row break before an empty first cell
     (re.compile(r"[ \t]{2,}"), " "),
@@ -135,7 +135,9 @@ _LATEX = [
 def _clean(text: str) -> str:
     text = _MARKER.sub("", text)
     for pattern, repl in _LATEX:
-        text = pattern.sub(repl, text)
+        n = 1
+        while n:  # nested merged cells unwrap one level per pass
+            text, n = pattern.subn(repl, text)
     return text.strip()
 
 
