@@ -559,6 +559,18 @@ def test_settings_saves_numbers_as_numbers(page, server):
     assert cfg["temperature"] == 0.2
 
 
+def test_tr22_settings_saves_embed_attempts(page, server):
+    page.goto(server)
+    page.click("#settings-btn")
+    page.fill('#settings [name="embed_attempts"]', "7")
+    page.click("#settings-save")
+    expect(page.locator("#settings")).not_to_be_visible()
+    page.click("#settings-btn")
+    expect(page.locator('#settings [name="embed_attempts"]')).to_have_value("7")
+    cfg = httpx.get(f"{server}/settings").json()
+    assert cfg["embed_attempts"] == 7 and type(cfg["embed_attempts"]) is int
+
+
 def test_settings_reset_restores_defaults_but_keeps_api_key(page, server):
     page.goto(server)
     page.click("#settings-btn")
