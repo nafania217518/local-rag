@@ -30,6 +30,7 @@ Branch `feature/nemotron-3.5-parse`, 2026-10-30. Mode `none`: the user asked for
 | TR-13 | opus | `app.main` MUST configure console logging once before the server starts: level INFO, format `%(asctime)s %(levelname)s %(name)s: %(message)s`, stream `sys.stderr`, the `httpx` logger at WARNING; when `sys.stderr` is None (Windows windowed exe) no handler is installed and `main` still works | BR-5 |
 | TR-14 | opus | in the documents list, the status dot of a failed row MUST be a button (aria-label "Show error") that opens a dialog with the document name and the full error text; the dot of a pending or indexed row stays a plain marker; the dialog has one Close button; the row tooltip keeps the error | BR-6 |
 | TR-15 | opus | when indexing fails on an HTTP error whose response has a body, the stored error MUST include that body (first 500 chars), so the dialog and the log show the server message | BR-5, BR-6 |
+| TR-16 | opus | `_error_text` appends the response body only for `httpx.HTTPStatusError`; an `openai.APIStatusError` already carries the server message in its text, so it is not repeated | BR-5, BR-6 (review finding) |
 
 ## Out of scope
 
