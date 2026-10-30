@@ -100,6 +100,19 @@ def test_settings_dialog_saves_api_key(page, server):
     assert httpx.get(f"{server}/settings").json()["api_key"] == "nvapi-test"
 
 
+def test_tr5_settings_dialog_saves_parse_url_after_rerank_url(page, server):
+    page.goto(server)
+    page.click("#settings-btn")
+    expect(page.locator('#settings fieldset:has(legend:text("Connection")) label:has([name="rerank_url"]) + label'
+                        ' [name="parse_url"]')).to_be_visible()
+    page.fill('#settings [name="parse_url"]', "https://example.test/{model}/parse")
+    page.click("#settings-save")
+    expect(page.locator("#settings")).not_to_be_visible()
+    page.reload()
+    page.click("#settings-btn")
+    expect(page.locator('#settings [name="parse_url"]')).to_have_value("https://example.test/{model}/parse")
+
+
 def test_settings_saves_paraphrase_toggle_and_count(page, server):
     page.goto(server)
     page.click("#settings-btn")
