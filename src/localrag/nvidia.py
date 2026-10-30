@@ -1,4 +1,3 @@
-import base64
 import json
 import re
 import threading
@@ -10,7 +9,7 @@ import httpx
 import openai
 
 EMBED_BATCH = 64
-PARSE_MAX_TOKENS = 3500  # hosted nemotron-parse-2.0 caps max_total_tokens at 4096
+PARSE_MAX_TOKENS = 9000  # hosted nemotron-3.5-parse caps max_output_tokens at 9000
 MAX_ATTEMPTS = 5
 BACKOFF_BASE = 1.0
 WINDOW = 60.0
@@ -119,14 +118,16 @@ def rerank(cfg: dict, query: str, passages: list[str]) -> list[tuple[int, float]
     return sorted(ranked, key=lambda r: r[1], reverse=True)
 
 
-_MARKER = re.compile(r"</?[a-z]{2,4}>")  # nemotron-parse markers such as <tbc>, <tbe>
+_MARKER = re.compile(r"</?[a-z]{2,4}>|<[xy]_[\d.]+>|<class_[\w-]+>")  # box corners, element class, <sup>, <tbc>
 
 
 _LATEX = [
+    (re.compile(r"\\thead\{([^}]*)\}"), r"\1"),  # before multirow: it nests inside its braces
+    (re.compile(r"\\mbox\{\}"), ""),
     (re.compile(r"\\(?:begin|end)\{tabular\}(?:\{[^}]*\})?"), ""),
     (re.compile(r"\\multi(?:row|column)\{[^}]*\}\{[^}]*\}\{([^}]*)\}"), r"\1"),
-    (re.compile(r"\s*\\\\\s*"), "\n"),
-    (re.compile(r"\s*&\s*"), " | "),
+    (re.compile(r"\s*\\\\[ \t]*\n?"), "\n"),  # eat one newline only: keep the blank line between elements
+    (re.compile(r"[ \t]*&[ \t]*"), " | "),  # spaces only: keep the row break before an empty first cell
     (re.compile(r"[ \t]{2,}"), " "),
 ]
 
@@ -139,18 +140,16 @@ def _clean(text: str) -> str:
 
 
 def parse_page(cfg: dict, image_png: bytes) -> str:
-    url = "data:image/png;base64," + base64.b64encode(image_png).decode()
-    client = _client(cfg)
-    resp = _throttled(cfg, lambda: client.chat.completions.create(
-        model=cfg["parse_model"],
-        messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}}]}],
-        max_tokens=PARSE_MAX_TOKENS, temperature=0,
-    ))
-    msg = resp.choices[0].message
-    if msg.content:
-        return _clean(msg.content)
-    # nemotron-parse returns pages as a markdown_bbox tool call: [[{"text": ...}, ...], ...]
-    texts = [_clean(el["text"])
-             for call in msg.tool_calls or [] if call.function.name == "markdown_bbox"
-             for page in json.loads(call.function.arguments) for el in page]
-    return "\n\n".join(texts)
+    def post():
+        resp = httpx.post(
+            cfg["parse_url"].format(model=cfg["parse_model"]),
+            headers={"Authorization": f"Bearer {cfg['api_key']}", "Accept": "application/json"},
+            files={"document": ("page.png", image_png, "image/png"),
+                   "options": (None, json.dumps({"decoding": {"max_output_tokens": PARSE_MAX_TOKENS}}),
+                               "application/json")},
+            timeout=cfg["timeout"],
+        )
+        resp.raise_for_status()
+        return resp
+
+    return _clean(_throttled(cfg, post).json()["content"] or "")

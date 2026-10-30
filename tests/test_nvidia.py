@@ -1,5 +1,5 @@
-import base64
 import json
+import re
 
 import httpx
 import openai
@@ -12,6 +12,11 @@ cfg = {**config.DEFAULTS, "api_key": "test-key"}
 CHAT_URL = f"{config.DEFAULTS['base_url']}/chat/completions"
 EMBED_URL = f"{config.DEFAULTS['base_url']}/embeddings"
 RERANK = config.DEFAULTS["rerank_url"].format(model="nvidia/nemotron-3.5-rerank-8b")
+PARSE = config.DEFAULTS["parse_url"].format(model="nvidia/nemotron-3.5-parse")
+
+
+def parse_resp(content):
+    return httpx.Response(200, json={"content": content, "finish_reason": "stop", "usage": {"output_tokens": 1}})
 
 
 def sse(*deltas):
@@ -119,20 +124,45 @@ def test_rerank_raises_on_http_error():
 
 
 @respx.mock
-def test_parse_page_sends_base64_png_and_returns_markdown():
-    route = respx.post(CHAT_URL).mock(return_value=httpx.Response(200, json={
-        "id": "x", "object": "chat.completion", "created": 0, "model": "m",
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": "# Page"}, "finish_reason": "stop"}]}))
+def test_tr2_parse_page_posts_png_as_document_part_to_parse_url():
+    route = respx.post(PARSE).mock(return_value=parse_resp("p"))
     png = b"\x89PNG fake"
-    assert nvidia.parse_page(cfg, png) == "# Page"
-    body = json.loads(route.calls.last.request.content)
-    assert body["model"] == cfg["parse_model"]
-    parts = body["messages"][0]["content"]
-    assert len(parts) == 1 and parts[0]["type"] == "image_url"
-    url = parts[0]["image_url"]["url"]
-    prefix = "data:image/png;base64,"
-    assert url.startswith(prefix)
-    assert base64.b64decode(url[len(prefix):]) == png
+    nvidia.parse_page(cfg, png)
+    body = route.calls.last.request.content
+    assert b'name="document"; filename="page.png"\r\nContent-Type: image/png\r\n\r\n' + png + b"\r\n" in body
+
+
+@respx.mock
+def test_tr2_parse_page_sends_bearer_key_and_accepts_json():
+    route = respx.post(PARSE).mock(return_value=parse_resp("p"))
+    nvidia.parse_page(cfg, b"png")
+    headers = route.calls.last.request.headers
+    assert headers["Authorization"] == "Bearer test-key" and headers["Accept"] == "application/json"
+    assert headers["Content-Type"].startswith("multipart/form-data; boundary=")
+
+
+@respx.mock
+def test_tr2_parse_page_sends_max_output_tokens_in_options_part():
+    route = respx.post(PARSE).mock(return_value=parse_resp("p"))
+    nvidia.parse_page(cfg, b"png")
+    body = route.calls.last.request.content.decode()
+    options = re.search(r'name="options"\r\nContent-Type: application/json\r\n\r\n(.*?)\r\n--', body, re.S).group(1)
+    assert json.loads(options) == {"decoding": {"max_output_tokens": nvidia.PARSE_MAX_TOKENS}}
+    assert nvidia.PARSE_MAX_TOKENS == 9000
+
+
+@respx.mock
+def test_tr2_parse_page_returns_content():
+    respx.post(PARSE).mock(return_value=parse_resp("# Page"))
+    assert nvidia.parse_page(cfg, b"png") == "# Page"
+
+
+@respx.mock
+def test_tr2_parse_page_raises_on_http_error():
+    respx.post(PARSE).mock(return_value=httpx.Response(400, json={
+        "object": "error", "message": "max_output_tokens must be between 1 and 9000"}))
+    with pytest.raises(httpx.HTTPStatusError):
+        nvidia.parse_page(cfg, b"png")
 
 
 @respx.mock
@@ -258,11 +288,8 @@ def test_every_client_call_passes_through_throttle(monkeypatch):
     monkeypatch.setattr(nvidia, "_throttle", lambda rpm: calls.append(rpm))
     respx.post(EMBED_URL).mock(return_value=httpx.Response(200, json=embed_resp([[1.0]])))
     respx.post(RERANK).mock(return_value=httpx.Response(200, json={"rankings": []}))
-    respx.post(CHAT_URL).mock(side_effect=[
-        httpx.Response(200, json={"id": "x", "object": "chat.completion", "created": 0, "model": "m",
-                                  "choices": [{"index": 0, "message": {"role": "assistant", "content": "p"},
-                                               "finish_reason": "stop"}]}),
-        sse({"content": "x"})])
+    respx.post(PARSE).mock(return_value=parse_resp("p"))
+    respx.post(CHAT_URL).mock(return_value=sse({"content": "x"}))
     nvidia.embed(cfg, ["a"], "query")
     nvidia.rerank(cfg, "q", ["a"])
     nvidia.parse_page(cfg, b"png")
@@ -271,52 +298,44 @@ def test_every_client_call_passes_through_throttle(monkeypatch):
 
 
 @respx.mock
-def test_parse_page_sends_max_tokens_within_model_limit():
-    route = respx.post(CHAT_URL).mock(return_value=httpx.Response(200, json={
-        "id": "x", "object": "chat.completion", "created": 0, "model": "m",
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": ""}, "finish_reason": "stop"}]}))
-    nvidia.parse_page(cfg, b"png")
-    body = json.loads(route.calls.last.request.content)
-    assert body["max_tokens"] == nvidia.PARSE_MAX_TOKENS
-    assert body["temperature"] == 0
-
-
-def _parse_resp(message):
-    return httpx.Response(200, json={
-        "id": "x", "object": "chat.completion", "created": 0, "model": "m",
-        "choices": [{"index": 0, "message": {"role": "assistant", **message}, "finish_reason": "stop"}]})
-
-
-@respx.mock
-def test_parse_page_joins_texts_from_markdown_bbox_tool_call():
-    box = {"xmin": 0.1, "ymin": 0.07, "xmax": 0.5, "ymax": 0.09}
-    pages = [[{"bbox": box, "text": "Kyiv is the capital of Ukraine.", "type": "Text"},
-              {"bbox": box, "text": "Second line.", "type": "Text"}]]
-    respx.post(CHAT_URL).mock(return_value=_parse_resp({"content": None, "tool_calls": [
-        {"id": "c1", "type": "function", "function": {"name": "markdown_bbox", "arguments": json.dumps(pages)}}]}))
-    assert nvidia.parse_page(cfg, b"png") == "Kyiv is the capital of Ukraine.\n\nSecond line."
-
-
-@respx.mock
-def test_parse_page_returns_empty_when_no_content_and_no_tool_calls():
-    respx.post(CHAT_URL).mock(return_value=_parse_resp({"content": None}))
+def test_tr4_parse_page_returns_empty_when_content_is_null():
+    respx.post(PARSE).mock(return_value=parse_resp(None))
     assert nvidia.parse_page(cfg, b"png") == ""
 
 
 @respx.mock
-def test_parse_page_strips_marker_tags():
-    pages = [[{"text": "<tbc>Kyiv is the capital.</tbc>", "type": "Text"}, {"text": "<tbe>Second line.", "type": "Text"}]]
-    respx.post(CHAT_URL).mock(return_value=_parse_resp({"content": None, "tool_calls": [
-        {"id": "c1", "type": "function", "function": {"name": "markdown_bbox", "arguments": json.dumps(pages)}}]}))
-    assert nvidia.parse_page(cfg, b"png") == "Kyiv is the capital.\n\nSecond line."
+def test_tr4_parse_page_returns_empty_when_content_is_empty():
+    respx.post(PARSE).mock(return_value=parse_resp(""))
+    assert nvidia.parse_page(cfg, b"png") == ""
 
 
 @respx.mock
-def test_parse_page_strips_latex_table_markup():
-    pages = [[{"text": r"\begin{tabular}{cc} Назва & Значення \\ Тиск & 10 МПа \\ \end{tabular}", "type": "Table"},
-              {"text": r"\multirow{2}{*}{**Умовна познака**}", "type": "Text"}]]
-    respx.post(CHAT_URL).mock(return_value=_parse_resp({"content": None, "tool_calls": [
-        {"id": "c1", "type": "function", "function": {"name": "markdown_bbox", "arguments": json.dumps(pages)}}]}))
+def test_tr3_parse_page_strips_box_and_class_tokens():
+    respx.post(PARSE).mock(return_value=parse_resp(
+        "<x_0.751><y_0.0336>**СОУ НАЕК 160:2025**<x_0.9307><y_0.0477><class_Page-header>\n\n"
+        "<x_0.1143><y_0.0852>Body line.<x_0.9297><y_0.1203><class_Text>"))
+    assert nvidia.parse_page(cfg, b"png") == "**СОУ НАЕК 160:2025**\n\nBody line."
+
+
+@respx.mock
+def test_tr3_parse_page_still_strips_old_marker_tags():
+    respx.post(PARSE).mock(return_value=parse_resp("<tbc>Kyiv is the capital<sup>13</sup>.</tbc>"))
+    assert nvidia.parse_page(cfg, b"png") == "Kyiv is the capital13."
+
+
+@respx.mock
+def test_tr3_parse_page_unwraps_thead_and_drops_mbox():
+    respx.post(PARSE).mock(return_value=parse_resp(
+        "<x_0.1><y_0.1>\\begin{tabular}{cc}\n\\multirow{2}{*}{\\thead{Назва}} & \\thead{Значення}\\\\\n"
+        "\\mbox{} & 10 МПа<sup>2</sup>\\\\\n\\end{tabular}<x_0.9><y_0.2><class_Table>"))
+    assert nvidia.parse_page(cfg, b"png") == "Назва | Значення\n | 10 МПа2"
+
+
+@respx.mock
+def test_tr3_parse_page_flattens_latex_table():
+    respx.post(PARSE).mock(return_value=parse_resp(
+        r"<x_0.1><y_0.1>\begin{tabular}{cc} Назва & Значення \\ Тиск & 10 МПа \\ \end{tabular}<x_0.9><y_0.2><class_Table>"
+        "\n\n" r"<x_0.1><y_0.3>\multirow{2}{*}{**Умовна познака**}<x_0.9><y_0.4><class_Text>"))
     assert nvidia.parse_page(cfg, b"png") == "Назва | Значення\nТиск | 10 МПа\n\n**Умовна познака**"
 
 
