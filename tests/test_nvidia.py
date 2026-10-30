@@ -401,10 +401,11 @@ def test_tr10_embed_splits_batch_in_halves_on_5xx(fake_time):
 
 
 @respx.mock
-def test_tr10_embed_splits_down_to_single_texts(fake_time):
-    route = respx.post(EMBED_URL).mock(side_effect=_echo_unless({2}))
-    assert nvidia.embed(cfg, ["1", "2"], "passage") == [[1.0], [2.0]]
-    assert [json.loads(c.request.content)["input"] for c in route.calls] == [["1", "2"], ["1"], ["2"]]
+def test_tr10_embed_splits_odd_batch_down_to_single_texts_in_order(fake_time):
+    route = respx.post(EMBED_URL).mock(side_effect=_echo_unless({2, 3}))
+    assert nvidia.embed(cfg, ["1", "2", "3"], "passage") == [[1.0], [2.0], [3.0]]
+    assert [json.loads(c.request.content)["input"] for c in route.calls] == [
+        ["1", "2", "3"], ["1"], ["2", "3"], ["2"], ["3"]]
 
 
 @respx.mock
