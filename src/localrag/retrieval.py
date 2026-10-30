@@ -14,7 +14,10 @@ def rrf(rankings: list[list[int]], k: int = RRF_K) -> list[tuple[int, float]]:
 
 
 PARAPHRASE_PROMPT = ("Write {n} different phrasings of the question below, in the same language as the question. "
-                     "One phrasing per line. No numbering, no quotes, no other text.\n\nQuestion: {question}")
+                     "The documents are technical standards and specifications: use the formal technical terms a "
+                     "standard uses instead of everyday words (for example, 'варити труби' becomes "
+                     "'зварювати трубопроводи'). One phrasing per line. No numbering, no quotes, no other text."
+                     "\n\nQuestion: {question}")
 
 
 def paraphrase(cfg, question, chat_stream=nvidia.chat_stream) -> list[str]:
