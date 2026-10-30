@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import threading
 import time
@@ -14,6 +15,7 @@ MAX_ATTEMPTS = 5
 BACKOFF_BASE = 1.0
 WINDOW = 60.0
 
+log = logging.getLogger(__name__)
 _sleep = time.sleep
 _now = time.monotonic
 _window: deque[float] = deque()
@@ -48,14 +50,20 @@ def _retry(fn, label, *, retry_5xx=True):
             if not (status == 429 or (retry_5xx and 500 <= status <= 599)) or attempt == MAX_ATTEMPTS:
                 raise
             retry_after = e.response.headers.get("Retry-After", "")
-            _sleep(int(retry_after) if retry_after.isdigit() else BACKOFF_BASE * 2 ** (attempt - 1))
+            wait = int(retry_after) if retry_after.isdigit() else BACKOFF_BASE * 2 ** (attempt - 1)
+            log.warning("%s: HTTP %d %s, retry %d/%d in %ds", label, status, e.response.text[:200], attempt,
+                        MAX_ATTEMPTS, wait)
+            _sleep(wait)
 
 
 def _throttled(cfg, fn, label, *, retry_5xx=True):
     def call():
         _throttle(cfg["rpm"])
         return fn()
-    return _retry(call, label, retry_5xx=retry_5xx)
+    start = _now()
+    result = _retry(call, label, retry_5xx=retry_5xx)
+    log.info("%s: ok in %.1fs", label, _now() - start)
+    return result
 
 
 def _client(cfg: dict) -> openai.OpenAI:
@@ -93,16 +101,18 @@ def embed(cfg: dict, texts: list[str], input_type: str) -> list[list[float]]:
 
 
 def _embed_batch(cfg, client, texts, input_type):
+    label = f"embed {cfg['embed_model']} x{len(texts)}"
     try:
         # A 5xx on a batch is a deterministic rejection: split instead of backing off.
         resp = _throttled(cfg, lambda: client.embeddings.create(
             model=cfg["embed_model"], input=texts, encoding_format="float",
             extra_body={"input_type": input_type, "truncate": "END"},
-        ), f"embed {cfg['embed_model']} x{len(texts)}", retry_5xx=len(texts) == 1)
+        ), label, retry_5xx=len(texts) == 1)
     except openai.APIStatusError as e:
         if len(texts) == 1 or not 500 <= e.response.status_code <= 599:
             raise
         half = len(texts) // 2
+        log.warning("%s: HTTP %d, splitting into %d + %d", label, e.response.status_code, half, len(texts) - half)
         return (_embed_batch(cfg, client, texts[:half], input_type)
                 + _embed_batch(cfg, client, texts[half:], input_type))
     return [d.embedding for d in sorted(resp.data, key=lambda d: d.index)]

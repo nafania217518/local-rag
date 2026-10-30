@@ -440,3 +440,45 @@ def test_tr10_embed_other_4xx_on_a_batch_raises_without_split(fake_time):
     with pytest.raises(openai.APIStatusError):
         nvidia.embed(cfg, ["a", "b"], "passage")
     assert route.call_count == 1
+
+
+def _messages(caplog, level):
+    return [r.getMessage() for r in caplog.records if r.name == "localrag.nvidia" and r.levelname == level]
+
+
+@respx.mock
+def test_tr11_throttled_call_logs_kind_model_size_and_seconds(fake_time, caplog):
+    caplog.set_level("INFO", logger="localrag.nvidia")
+    respx.post(EMBED_URL).mock(return_value=httpx.Response(200, json=embed_resp([[1.0], [2.0]])))
+    nvidia.embed(cfg, ["a", "b"], "passage")
+    assert _messages(caplog, "INFO") == [f"embed {cfg['embed_model']} x2: ok in 0.0s"]
+
+
+@respx.mock
+def test_tr11_retry_logs_status_body_attempt_and_wait(fake_time, caplog):
+    caplog.set_level("INFO", logger="localrag.nvidia")
+    respx.post(EMBED_URL).mock(side_effect=[
+        httpx.Response(429, headers={"Retry-After": "3"}, text="slow down"),
+        httpx.Response(200, json=embed_resp([[1.0]]))])
+    nvidia.embed(cfg, ["a"], "query")
+    assert _messages(caplog, "WARNING") == [
+        f"embed {cfg['embed_model']} x1: HTTP 429 slow down, retry 1/{nvidia.MAX_ATTEMPTS} in 3s"]
+
+
+@respx.mock
+def test_tr11_split_logs_batch_size_and_status(fake_time, caplog):
+    caplog.set_level("INFO", logger="localrag.nvidia")
+    respx.post(EMBED_URL).mock(side_effect=_echo_unless({4}))
+    nvidia.embed(cfg, ["1", "2", "3", "4"], "passage")
+    assert _messages(caplog, "WARNING") == [f"embed {cfg['embed_model']} x4: HTTP 500, splitting into 2 + 2"]
+
+
+@respx.mock
+def test_tr11_parse_and_rerank_calls_are_logged_too(fake_time, caplog):
+    caplog.set_level("INFO", logger="localrag.nvidia")
+    respx.post(RERANK).mock(return_value=httpx.Response(200, json={"rankings": []}))
+    respx.post(PARSE).mock(return_value=parse_resp("p"))
+    nvidia.rerank(cfg, "q", ["a", "b"])
+    nvidia.parse_page(cfg, b"png")
+    assert _messages(caplog, "INFO") == [f"rerank {cfg['rerank_model']} x2: ok in 0.0s",
+                                         f"parse {cfg['parse_model']}: ok in 0.0s"]
