@@ -148,4 +148,4 @@ Format: the caveat line of the armory `core` skill, section Reports
 - On the question set the keyword-term ranking alone hits 5 to 6 of 30 against 14 of 30 for the question ranking (two runs, 2026-11-06) : docs/DESIGN.md
 - The hit-rate measurement runs on `config.DEFAULTS` (paraphrases 2, sources 6), not on the user's saved settings, so its numbers describe a new install : tests/test_live_retrieval.py
 - In the second measurement run of 2026-11-06 the keyword ranking lowered the fused mean reciprocal rank from 0.795 to 0.740 with every hit rate unchanged; the first run gave 0.760 against 0.761 : docs/DESIGN.md
-- The autouse fixture `no_configure_logging` lets the real `configure_logging` run only for the tests it lists by name, so a rename of one of them breaks that test : tests/test_app.py
+- The autouse fixture `no_configure_logging` lets the real `configure_logging` run only for the tests it lists by name, so a rename of either `test_configure_logging_*` test makes it fail : tests/test_app.py
