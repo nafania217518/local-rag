@@ -134,17 +134,17 @@ Format: the caveat line of the armory `core` skill, section Reports
 - The chat model copies the language of a bare example in the paraphrase prompt (an English question got Ukrainian paraphrases); the example is a full question pair after the rules, with an explicit "language of the question, not of the example" clause : docs/DESIGN.md
 - Question paraphrasing costs one extra chat request per question (four requests per question with rerank and the answer); a failed paraphrase call falls back to the original question : docs/DESIGN.md
 - A Rosetta crash (rosetta error: invalid gdt selector index 5) can kill Wine's pip during the Docker build at random (2 of 3 runs on 2026-10-30, same image and settings as a passing run the day before); a rerun passes; scripts/build-windows.sh detects it from the build log : docs/DESIGN.md
-- `db.connect` writes the schema on open, so the hit-rate measurement runs on a backup copy of the app database : —
+- `db.connect` writes the schema on open, so the hit-rate measurement runs on a backup copy of the app database : tests/test_live_retrieval.py
 - The expansion parser ignores unlabelled lines, so a reply in the old one-phrasing-per-line format gives no paraphrases : src/localrag/retrieval.py
 - Keyword terms match exact tokens only; inflected Ukrainian and Russian forms miss until word forms ship : src/localrag/retrieval.py
 - The expansion prompt has two language sentences: the clause after the example covers the intent and the phrasings, and the next sentence covers the keywords, which must also be in English : src/localrag/retrieval.py
 - FTS5 bm25 scores each OR'd phrase on its own and counts a repeated phrase twice, so keyword terms are deduplicated and run as a separate ranking : src/localrag/db.py
-- Chunks overlap at page boundaries, so the same sentence can sit in chunks of two adjacent pages; a strict one-page check can mark a correct hit as a miss : —
+- `chunk_overlap` applies only inside one page; chunks of adjacent pages share no text, so an answer across a page break is split between two pages : src/localrag/index.py
 - OCR text has spacing noise inside numbers ("2 0 мм" for "20 мм"), so exact-token keyword search can miss numeric answers : —
 - The real chat model copied the Ukrainian example into the keywords of an English question; one more sentence after the language clause of the expansion prompt fixes it : src/localrag/retrieval.py
 - `expand` sends the chat request also when `paraphrases` is below 1; only the `paraphrase` toggle stops it : src/localrag/retrieval.py
 - The hit-rate measurement takes the workspace of the first question's document; standards that sit in different workspaces make the other questions miss : tests/test_live_retrieval.py
 - On the 757-chunk НАЕК corpus the question set hits 30/30 in the fused top 20 with and without the keyword ranking (2026-11-06), so that cutoff cannot show a gain or a loss : tests/test_live_retrieval.py
-- On the question set the keyword-term ranking alone hits 6/30 in its top 30 (uk 4/12, ru 1/9, en 1/9) against 14/30 for the question ranking, and the fused mean reciprocal rank stays 0.760 against 0.761 (2026-11-06): no measurable gain from keyword expansion with exact tokens : tests/test_live_retrieval.py
+- On the question set the keyword-term ranking alone hits 6/30 against 14/30 for the question ranking (2026-11-06); the full numbers are in the design doc, section 4.3 : docs/DESIGN.md
 - With `pytest -s`, the first printed line of the measurement joins the test-name line, so a grep for lines that start with a label misses it : tests/test_live_retrieval.py
 - The hit-rate measurement runs on `config.DEFAULTS` (paraphrases 2, sources 6), not on the user's saved settings, so its numbers describe a new install : tests/test_live_retrieval.py
