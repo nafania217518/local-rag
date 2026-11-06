@@ -351,3 +351,20 @@ def test_expand_without_keyword_lines_keeps_the_phrasings(cfg):
 def test_expand_without_phrasing_lines_keeps_the_keywords(cfg):
     cfg.update(paraphrase=True)
     assert expand(cfg, "q", fake_chat("INTENT: i\nKEYWORDS: weld; seam")) == Expansion((), ("weld", "seam"))
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-6
+def test_retrieve_runs_on_the_original_question_when_expansion_fails(env, cfg):
+    conn, ws, d1, d2 = env
+    ids = db.add_chunks(conn, d1, ws, [(0, 1, "weld rules", E1)])
+    cfg.update(rerank=False, paraphrase=True)
+    embedded = []
+    def embed(cfg, texts, input_type):
+        embedded.append(texts)
+        return [E2 for _ in texts]
+    def bad(*a, **k):
+        raise RuntimeError("down")
+        yield
+    out = retrieve(conn, cfg, ws, "weld", embed=embed, rerank=no_rerank, chat_stream=bad)
+    assert embedded == [["weld"]]
+    assert [r["id"] for r in out] == ids
