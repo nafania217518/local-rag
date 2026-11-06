@@ -143,3 +143,5 @@ Format: the caveat line of the armory `core` skill, section Reports
 - OCR text has spacing noise inside numbers ("2 0 мм" for "20 мм"), so exact-token keyword search can miss numeric answers : —
 - The real chat model copied the Ukrainian example into the keywords of an English question; one more sentence after the language clause of the expansion prompt fixes it : src/localrag/retrieval.py
 - `expand` sends the chat request also when `paraphrases` is below 1; only the `paraphrase` toggle stops it : src/localrag/retrieval.py
+- The hit-rate measurement takes the workspace of the first question's document; standards that sit in different workspaces make the other questions miss : tests/test_live_retrieval.py
+- On the 757-chunk НАЕК corpus the question set hits 30/30 in the fused top 20 with and without the keyword ranking (2026-11-06), so that cutoff cannot show a gain or a loss : tests/test_live_retrieval.py
