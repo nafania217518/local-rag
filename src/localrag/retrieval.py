@@ -77,11 +77,28 @@ def retrieve(conn, cfg, workspace_id, question, *, embed=nvidia.embed, rerank=nv
              chat_stream=nvidia.chat_stream) -> list[dict]:
     if not question.strip():
         return []
-    queries = [question, *expand(cfg, question, chat_stream).paraphrases]
+    expansion = expand(cfg, question, chat_stream)
+    rankings = [*search_rankings(conn, cfg, workspace_id, [question, *expansion.paraphrases], embed),
+                keyword_ranking(conn, cfg, workspace_id, expansion.keywords)]
+    return pick_sources(conn, cfg, question, fuse(cfg, rankings), rerank)
+
+
+def search_rankings(conn, cfg, workspace_id, queries, embed) -> list[list[int]]:
     fts = [[i for i, _ in db.fts_search(conn, workspace_id, q, cfg["candidates"])] for q in queries]
     vec = [[i for i, _ in db.vec_search(conn, workspace_id, v, cfg["candidates"])]
            for v in embed(cfg, queries, "query")]
-    fused = rrf(fts + vec)[:cfg["rerank_candidates"]]
+    return fts + vec
+
+
+def keyword_ranking(conn, cfg, workspace_id, keywords) -> list[int]:
+    return [i for i, _ in db.fts_search_terms(conn, workspace_id, keywords, cfg["candidates"])]
+
+
+def fuse(cfg, rankings) -> list[tuple[int, float]]:
+    return rrf(rankings)[:cfg["rerank_candidates"]]
+
+
+def pick_sources(conn, cfg, question, fused, rerank) -> list[dict]:
     if not fused:
         return []
     rows = db.get_chunks(conn, [i for i, _ in fused])

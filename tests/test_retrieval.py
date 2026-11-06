@@ -1,7 +1,7 @@
 import pytest
 
 from localrag import config, db
-from localrag.retrieval import Expansion, expand, retrieve, rrf
+from localrag.retrieval import Expansion, expand, fuse, keyword_ranking, retrieve, rrf, search_rankings
 
 E1, E2, E3, E4 = [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]
 
@@ -261,6 +261,7 @@ def test_expand_off_does_not_call_chat_model(cfg):
     assert expand(cfg, "q", boom) == Expansion()
 
 
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-7
 def test_retrieve_fuses_fts_hits_found_only_by_a_paraphrase(env, cfg):
     conn, ws, d1, d2 = env
     ids = db.add_chunks(conn, d1, ws, [(0, 1, "alpha words", E1), (1, 1, "omega words", E1)])
@@ -270,6 +271,7 @@ def test_retrieve_fuses_fts_hits_found_only_by_a_paraphrase(env, cfg):
     assert out[0]["id"] == ids[1]
 
 
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-7
 def test_retrieve_embeds_original_and_paraphrases_in_one_call(env, cfg):
     conn, ws, d1, d2 = env
     db.add_chunks(conn, d1, ws, [(0, 1, "text", E1)])
@@ -282,6 +284,7 @@ def test_retrieve_embeds_original_and_paraphrases_in_one_call(env, cfg):
     assert calls == [["q", "p1", "p2"]]
 
 
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-7
 def test_retrieve_reranks_with_original_question(env, cfg):
     conn, ws, d1, d2 = env
     db.add_chunks(conn, d1, ws, [(0, 1, "text", E1)])
@@ -290,7 +293,8 @@ def test_retrieve_reranks_with_original_question(env, cfg):
     def rerank(cfg, query, passages):
         queries.append(query)
         return [(i, 1.0) for i in range(len(passages))]
-    retrieve(conn, cfg, ws, "q", embed=fake_embed(E1), rerank=rerank, chat_stream=fake_chat("p1"))
+    reply = "INTENT: the intent\nPHRASING: p1\nKEYWORDS: weld; seam"
+    retrieve(conn, cfg, ws, "q", embed=fake_embed(E1), rerank=rerank, chat_stream=fake_chat(reply))
     assert queries == ["q"]
 
 
@@ -368,3 +372,46 @@ def test_retrieve_runs_on_the_original_question_when_expansion_fails(env, cfg):
     out = retrieve(conn, cfg, ws, "weld", embed=embed, rerank=no_rerank, chat_stream=bad)
     assert embedded == [["weld"]]
     assert [r["id"] for r in out] == ids
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-7
+def test_retrieve_finds_a_chunk_matched_only_by_a_keyword_synonym(env, cfg):
+    conn, ws, d1, d2 = env
+    ids = db.add_chunks(conn, d1, ws, [(0, 1, "alpha words", E1), (1, 1, "трубопровід words", E2)])
+    cfg.update(rerank=False, paraphrase=True, sources=1)
+    out = retrieve(conn, cfg, ws, "nothing", embed=fake_embed(E1), rerank=no_rerank,
+                   chat_stream=fake_chat("INTENT: pipes\nKEYWORDS: труба; трубопровід; pipe"))
+    assert out[0]["id"] == ids[1]
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-7
+def test_retrieve_does_not_embed_keywords_or_the_intent(env, cfg):
+    conn, ws, d1, d2 = env
+    db.add_chunks(conn, d1, ws, [(0, 1, "text", E1)])
+    cfg.update(rerank=False, paraphrase=True)
+    calls = []
+    def embed(cfg, texts, input_type):
+        calls.append(texts)
+        return [E1 for _ in texts]
+    reply = "INTENT: the intent\nPHRASING: p1\nKEYWORDS: weld; seam"
+    retrieve(conn, cfg, ws, "q", embed=embed, rerank=no_rerank, chat_stream=fake_chat(reply))
+    assert calls == [["q", "p1"]]
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-7
+def test_keyword_ranking_without_keywords_is_empty(env, cfg):
+    conn, ws, d1, d2 = env
+    db.add_chunks(conn, d1, ws, [(0, 1, "weld", E1)])
+    assert keyword_ranking(conn, cfg, ws, ()) == []
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-7
+def test_fuse_with_and_without_the_keyword_ranking_from_one_expansion(env, cfg):
+    conn, ws, d1, d2 = env
+    ids = db.add_chunks(conn, d1, ws, [(0, 1, "alpha", E1), (1, 1, "seam", E2)])
+    expansion = Expansion(keywords=("seam",))
+    base = search_rankings(conn, cfg, ws, ["alpha"], fake_embed(E1))
+    without = fuse(cfg, base)
+    with_keywords = fuse(cfg, base + [keyword_ranking(conn, cfg, ws, expansion.keywords)])
+    assert [i for i, _ in without] == [ids[0], ids[1]]
+    assert dict(with_keywords)[ids[1]] == pytest.approx(dict(without)[ids[1]] + 1 / 61)
