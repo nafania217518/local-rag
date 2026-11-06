@@ -147,3 +147,4 @@ Format: the caveat line of the armory `core` skill, section Reports
 - On the 757-chunk НАЕК corpus the question set hits 30/30 in the fused top 20 with and without the keyword ranking (2026-11-06), so that cutoff cannot show a gain or a loss : tests/test_live_retrieval.py
 - On the question set the keyword-term ranking alone hits 6/30 in its top 30 (uk 4/12, ru 1/9, en 1/9) against 14/30 for the question ranking, and the fused mean reciprocal rank stays 0.760 against 0.761 (2026-11-06): no measurable gain from keyword expansion with exact tokens : tests/test_live_retrieval.py
 - With `pytest -s`, the first printed line of the measurement joins the test-name line, so a grep for lines that start with a label misses it : tests/test_live_retrieval.py
+- The hit-rate measurement runs on `config.DEFAULTS` (paraphrases 2, sources 6), not on the user's saved settings, so its numbers describe a new install : tests/test_live_retrieval.py
