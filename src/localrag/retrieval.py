@@ -33,6 +33,7 @@ EXPAND_PROMPT = (
 
 _LABELLED = re.compile(r"^\s*(?:[-*•]|\d+[.)])?\s*\**\s*(INTENT|PHRASING|KEYWORDS)\s*\**\s*:\s*\**(.*?)\**\s*$",
                        re.IGNORECASE)
+_UNLABELLED = re.compile(r"^\s*(?:[-*•]\s|\d+[.)])?\s*(.*?)\s*$")
 
 
 @dataclass(frozen=True)
@@ -56,23 +57,34 @@ def expand(cfg, question, chat_stream=nvidia.chat_stream) -> Expansion:
 
 
 def _parse_expansion(reply, question, n, groups) -> Expansion:
-    phrasings, terms, keyword_lines, seen = [], [], 0, set()
-    for line in reply.splitlines():
-        match = _LABELLED.match(line)
-        if not match:
-            continue
-        label, body = match.group(1).upper(), match.group(2).strip()
+    phrasings, terms, keyword_groups, seen = [], [], 0, set()
+    for label, body in _sectioned_lines(reply):
         if label == "PHRASING":
             phrasing = body.strip("\"'«»“”").strip()
             if phrasing and phrasing.casefold() != question.strip().casefold() and phrasing not in phrasings:
                 phrasings.append(phrasing)
-        elif label == "KEYWORDS" and keyword_lines < groups:
-            keyword_lines += 1
+        elif label == "KEYWORDS" and keyword_groups < groups:
+            keyword_groups += 1
             for term in (t.strip() for t in body.split(";")):
                 if term and term.casefold() not in seen:
                     seen.add(term.casefold())
                     terms.append(term)
     return Expansion(tuple(phrasings[:n]), tuple(terms))
+
+
+def _sectioned_lines(reply):
+    """Yields (label, body) per non-empty line; an unlabelled line takes the label of the section it is in."""
+    label = None
+    for line in reply.splitlines():
+        match = _LABELLED.match(line)
+        if match:
+            label, body = match.group(1).upper(), match.group(2).strip()
+        elif label:
+            body = _UNLABELLED.match(line).group(1).strip("* ")
+        else:
+            continue
+        if body:
+            yield label, body
 
 
 def retrieve(conn, cfg, workspace_id, question, *, embed=nvidia.embed, rerank=nvidia.rerank,

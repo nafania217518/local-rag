@@ -350,9 +350,37 @@ def test_expand_accepts_lowercase_labels_bullets_and_bold(cfg):
 
 
 # req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
-def test_expand_ignores_unlabelled_lines(cfg):
+def test_expand_drops_lines_before_the_first_label(cfg):
     cfg.update(paraphrase=True)
     assert expand(cfg, "q", fake_chat("Here you go:\np1\nweld; seam\nPHRASING: p2")) == Expansion(("p2",))
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-16
+def test_expand_reads_unlabelled_lines_under_a_phrasing_label(cfg):
+    cfg.update(paraphrase=True, paraphrases=10)
+    reply = "INTENT: i\nPHRASING: p1\np2\n- p3\n2. \"p4\"\nKEYWORDS: weld"
+    assert expand(cfg, "q", fake_chat(reply)).paraphrases == ("p1", "p2", "p3", "p4")
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-16
+def test_expand_reads_unlabelled_lines_under_a_keywords_label(cfg):
+    cfg.update(paraphrase=True, keyword_groups=2)
+    reply = "INTENT: i\nPHRASING: p1\nKEYWORDS: weld; seam\n- pipe; tube\nflange"
+    assert expand(cfg, "q", fake_chat(reply)) == Expansion(("p1",), ("weld", "seam", "pipe", "tube"))
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-16
+def test_expand_reads_a_label_alone_on_its_line(cfg):
+    cfg.update(paraphrase=True, paraphrases=10, keyword_groups=2)
+    reply = "INTENT: i\nPHRASING:\np1\np2\n**KEYWORDS:**\nweld; seam\npipe\nPHRASING: p3"
+    assert expand(cfg, "q", fake_chat(reply)) == Expansion(("p1", "p2", "p3"), ("weld", "seam", "pipe"))
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-16
+def test_expand_drops_lines_under_the_intent_label_and_before_the_first_label(cfg):
+    cfg.update(paraphrase=True, paraphrases=10)
+    reply = "Sure:\nweld; seam\nINTENT: i1\ni2\ni3\nPHRASING: p1"
+    assert expand(cfg, "q", fake_chat(reply)) == Expansion(("p1",))
 
 
 # req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
