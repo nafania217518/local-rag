@@ -172,7 +172,7 @@ Conclusion: the keyword ranking gives no measurable gain on this corpus. It does
 
 Limits of the measurement:
 - 30 questions, so one question is 3.3 percentage points.
-- Two runs differ by 0.035 in the baseline mean reciprocal rank, so a difference of that size between the variants is noise.
+- The baseline mean reciprocal rank differs by 0.035 between the two runs. The difference between the variants is +0.001 in run 1 and -0.055 in run 2, so two runs do not settle its size.
 - Chunks never span two pages, so an answer that runs across a page break is split between two pages; the strict page check can count it as a miss (both variants share the check).
 - The result holds only while the default embed model is the one that indexed the database.
 - The test stops before any API request when a document of the question set is missing or the documents sit in more than one workspace.
