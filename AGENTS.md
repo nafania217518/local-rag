@@ -135,7 +135,7 @@ Format: the caveat line of the armory `core` skill, section Reports
 - Question paraphrasing costs one extra chat request per question (four requests per question with rerank and the answer); a failed paraphrase call falls back to the original question : docs/DESIGN.md
 - A Rosetta crash (rosetta error: invalid gdt selector index 5) can kill Wine's pip during the Docker build at random (2 of 3 runs on 2026-10-30, same image and settings as a passing run the day before); a rerun passes; scripts/build-windows.sh detects it from the build log : docs/DESIGN.md
 - `db.connect` writes the schema on open, so the hit-rate measurement runs on a backup copy of the app database : tests/test_live_retrieval.py
-- The expansion parser ignores unlabelled lines, so a reply in the old one-phrasing-per-line format gives no paraphrases : src/localrag/retrieval.py
+- The expansion parser reads unlabelled lines only under a PHRASING or KEYWORDS label, so a reply with no label at all gives no paraphrases : src/localrag/retrieval.py
 - Keyword terms match exact tokens only; inflected Ukrainian and Russian forms miss until word forms ship : src/localrag/retrieval.py
 - The expansion prompt has two language sentences: the clause after the example covers the intent and the phrasings, and the next sentence covers the keywords, which must also be in English : src/localrag/retrieval.py
 - FTS5 bm25 scores each OR'd phrase on its own and counts a repeated phrase twice, so keyword terms are deduplicated and run as a separate ranking : src/localrag/db.py
@@ -145,9 +145,11 @@ Format: the caveat line of the armory `core` skill, section Reports
 - `expand` sends the chat request also when `paraphrases` is below 1; only the `paraphrase` toggle stops it : src/localrag/retrieval.py
 - The hit-rate measurement stops before any API request when a document of the question set is missing or the documents sit in more than one workspace : tests/test_live_retrieval.py
 - On the 757-chunk НАЕК corpus the question set hits 30/30 in the fused top 20 with and without the keyword ranking (2026-11-06), so that cutoff cannot show a gain or a loss : tests/test_live_retrieval.py
-- On the question set the keyword-term ranking alone hits 5 to 6 of 30 against 14 of 30 for the question ranking (two runs, 2026-11-06) : docs/DESIGN.md
+- On the question set the keyword-term ranking alone hits 5 to 9 of 30 against 14 of 30 for the question ranking (three runs, 2026-11-06) : docs/DESIGN.md
 - The hit-rate measurement runs on `config.DEFAULTS` (paraphrases 2, sources 6), not on the user's saved settings, so its numbers describe a new install : tests/test_live_retrieval.py
 - In the second measurement run of 2026-11-06 the keyword ranking lowered the fused mean reciprocal rank from 0.795 to 0.740 with every hit rate unchanged; the first run gave 0.760 against 0.761 : docs/DESIGN.md
 - The autouse fixture `no_configure_logging` lets the real `configure_logging` run only for the tests it lists by name, so a renamed `test_configure_logging_*` test runs against a no-op stub : tests/test_app.py
 - With `paraphrases` 10 the real chat model often writes one PHRASING label and puts the other phrasings on unlabelled lines below it, and does the same under KEYWORDS (hand test and probe 2026-11-06); with 2 it labelled every line : src/localrag/retrieval.py
 - The Settings save button skips the browser's min and max checks, so a value below an input's minimum (keyword groups 0) is saved : src/localrag/static/index.html
+- `test_live_expansion_keeps_ten_phrasings` failed in 1 of 5 standalone runs (6 phrasings kept, 8 required): the real model sometimes writes fewer than 8 different phrasings : tests/test_live_languages.py
+- A plain line under an INTENT label belongs to the INTENT section, so the parser drops a multi-line intent as a whole : src/localrag/retrieval.py

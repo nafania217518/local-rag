@@ -125,7 +125,7 @@ Runs in a background thread per document. The UI polls document status.
 Sizes are settings (section 4.7); defaults in brackets.
 
 0. Expansion (`expand`): when `paraphrase` is on, one chat call with reasoning off returns labelled lines in this order: one `INTENT:` line (what the user wants to find), `paraphrases` (2) `PHRASING:` lines, and at most `keyword_groups` (4) `KEYWORDS:` lines. A `KEYWORDS:` line holds one domain term of the question and at most `keyword_synonyms` (3) synonyms in the language of the question, then the same in English, separated by `;`. An English question gets English only. The intent line exists so that the model derives the keywords from it. The parser drops it: it is not searched, shown or stored, and it changes no route. `Expansion` holds only `paraphrases` and `keywords`. The queries are the original plus the paraphrases.
-   - Parsing: labels match case-insensitively, after a bullet or a number and inside markdown bold. Unlabelled lines are ignored, so a reply in the old one-phrasing-per-line format gives nothing. Phrasings: quotes stripped, copies of the question and duplicates dropped, capped at `paraphrases`. Keywords: only the first `keyword_groups` lines count, blank terms are dropped, duplicates are removed across groups ignoring case, and the groups are flattened to one list of distinct terms. A reply with only one kind of line keeps that kind. If the call fails, the question runs alone.
+   - Parsing: labels match case-insensitively, after a bullet or a number and inside markdown bold. A label line opens a section: an unlabelled line after a `PHRASING:` label is a phrasing, and after a `KEYWORDS:` label a keyword group, until the next label. Lines after `INTENT:` and lines before the first label are dropped, so a reply with no label at all gives nothing. The sections exist because with `paraphrases` 10 the real model often wrote one `PHRASING:` label and put the other phrasings on plain lines below it, and the first parser kept 0 or 1 of them (hand test 2026-11-06); the prompt also says that every line starts with its label. Phrasings: quotes stripped, copies of the question and duplicates dropped, capped at `paraphrases`. Keywords: only the first `keyword_groups` groups count, blank terms are dropped, duplicates are removed across groups ignoring case, and the groups are flattened to one list of distinct terms. A reply with only one kind of line keeps that kind. If the call fails, the question runs alone.
    - Prompt: the corpus is technical documentation, so the prompt asks for the formal technical terms of standards instead of everyday words, with one Ukrainian example given as a full question ("Як варити труби?" becomes "Як зварювати трубопроводи?") after the rules. Two language sentences follow the example. The intent and the phrasings are in the language of the question, not of the example: a bare example made the model answer English questions in Ukrainian (probe 2026-10-30). The keywords are in the language of the question and in English, and for an English question every keyword is in English: the real model copied the Ukrainian example into the keywords of an English question (probe 2026-11-06). The Settings input allows 1 to 10 paraphrases.
    - With `paraphrase` off, no chat request runs and there is no keyword ranking. Keyword expansion has no toggle of its own. With `paraphrases` 0 the request still runs and gives keywords only; the Settings input has a minimum of 1, so 0 comes only from config.json or a direct `PUT /settings`.
 1. FTS5 `MATCH` per query (the original question plus the paraphrases), top `candidates` (30, BM25 order).
@@ -147,32 +147,32 @@ Cost per question: still one chat request for the expansion, one embed, one rera
 - The live test `tests/test_live_retrieval.py` runs on a backup copy of the app database with `config.DEFAULTS`. It makes one expansion per question and fuses the same rankings with and without the keyword ranking. A hit is an expected (document, page) in the list.
 - Command: `LOCALRAG_EVAL_DB="$HOME/Library/Application Support/LocalRAG/localrag.db" uv run pytest -m live tests/test_live_retrieval.py --no-cov -s`, with `NVIDIA_API_KEY` set. About 120 requests, about 4 minutes.
 
-Two runs on the same day. The chat model writes other paraphrases and keywords in each run, so the baseline moves too.
+Three runs on the same day. The chat model writes other paraphrases and keywords in each run, so the baseline moves too. Run 3 ran after the parser got its sections and the prompt its label rule.
 
-| Measure | Run 1 without | Run 1 with | Run 2 without | Run 2 with |
-|---|---|---|---|---|
-| Fused top 20 hit rate | 30/30 | 30/30 | 30/30 | 30/30 |
-| Top 6 after rerank | 30/30 | 30/30 | 30/30 | 30/30 |
-| Fused mean reciprocal rank | 0.760 | 0.761 | 0.795 | 0.740 |
-| First hit better / worse with keywords | | 1 / 2 | | 0 / 4 |
+| Measure | Run 1 without | Run 1 with | Run 2 without | Run 2 with | Run 3 without | Run 3 with |
+|---|---|---|---|---|---|---|
+| Fused top 20 hit rate | 30/30 | 30/30 | 30/30 | 30/30 | 30/30 | 30/30 |
+| Top 6 after rerank | 30/30 | 30/30 | 30/30 | 30/30 | 30/30 | 30/30 |
+| Fused mean reciprocal rank | 0.760 | 0.761 | 0.795 | 0.740 | 0.719 | 0.719 |
+| First hit better / worse with keywords | | 1 / 2 | | 0 / 4 | | 3 / 3 |
 
 Keyword-search rankings alone, top 30:
 
-| Ranking | Run 1 | Run 2 |
-|---|---|---|
-| Question ranking, hits (mean reciprocal rank) | 14/30 (0.194) | 14/30 (0.194) |
-| Keyword-term ranking, hits (mean reciprocal rank) | 6/30 (0.152) | 5/30 (0.103) |
-| Keyword-term ranking per language: uk, ru, en | 4/12, 1/9, 1/9 | 3/12, 1/9, 1/9 |
-| Questions hit only by the keyword-term ranking | 1 | 1 |
-| Questions hit only by the question ranking | 9 | 10 |
+| Ranking | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| Question ranking, hits (mean reciprocal rank) | 14/30 (0.194) | 14/30 (0.194) | 14/30 (0.194) |
+| Keyword-term ranking, hits (mean reciprocal rank) | 6/30 (0.152) | 5/30 (0.103) | 9/30 (0.154) |
+| Keyword-term ranking per language: uk, ru, en | 4/12, 1/9, 1/9 | 3/12, 1/9, 1/9 | 7/12, 1/9, 1/9 |
+| Questions hit only by the keyword-term ranking | 1 | 1 | 3 |
+| Questions hit only by the question ranking | 9 | 10 | 8 |
 
-The model returned keywords for 30 of 30 questions in both runs.
+The model returned keywords for 30 of 30 questions in every run. In run 3, 28 of 30 questions kept both of their phrasings; runs 1 and 2 did not count this.
 
-Conclusion: the keyword ranking gives no measurable gain on this corpus. It does not change the hit rate in the top 20 or in the top 6 after rerank. In run 2 it moved the first hit down in the fused list for 4 questions and up for none; in run 1 the order was about equal. The fused order decides the sources only when `rerank` is off, and that case was not measured. The fused rankings without keywords already put an expected page of every question into the top 20. The keyword-term ranking is weaker than the question ranking. The likely causes, not tested: keywords match exact tokens while the text holds inflected forms, and Russian and English keywords do not match Ukrainian text. Word forms are the next step: issue "Match Ukrainian and Russian word forms in keyword search" (https://github.com/nafania217518/local-rag/issues/11).
+Conclusion: the keyword ranking gives no measurable gain on this corpus. It does not change the hit rate in the top 20 or in the top 6 after rerank. In run 2 it moved the first hit down in the fused list for 4 questions and up for none; in runs 1 and 3 the order was about equal. The fused order decides the sources only when `rerank` is off, and that case was not measured. The fused rankings without keywords already put an expected page of every question into the top 20. The keyword-term ranking is weaker than the question ranking. The likely causes, not tested: keywords match exact tokens while the text holds inflected forms, and Russian and English keywords do not match Ukrainian text. Word forms are the next step: issue "Match Ukrainian and Russian word forms in keyword search" (https://github.com/nafania217518/local-rag/issues/11).
 
 Limits of the measurement:
 - 30 questions, so one question is 3.3 percentage points.
-- The baseline mean reciprocal rank differs by 0.035 between the two runs. The difference between the variants is +0.001 in run 1 and -0.055 in run 2, so two runs do not settle its size.
+- The baseline mean reciprocal rank runs from 0.719 to 0.795 over the three runs. The difference between the variants is +0.001, -0.055 and 0.000, so three runs do not settle its size.
 - Chunks never span two pages, so an answer that runs across a page break is split between two pages; the strict page check can count it as a miss (both variants share the check).
 - The result holds only while the default embed model is the one that indexed the database.
 - The test stops before any API request when a document of the question set is missing or the documents sit in more than one workspace.
@@ -317,7 +317,7 @@ Local models, translation layer, images in answers, document editing, multi-user
 - Python's stdlib `sqlite3` cannot register a custom FTS5 tokenizer, so FTS5 synonym support (colocated tokens) is out of reach; keyword terms run as a separate OR query built in Python.
 - FTS5 bm25 scores each OR'd phrase on its own and counts a repeated phrase twice; keyword terms are deduplicated and fused as their own ranking.
 - Keyword terms match exact tokens only; inflected Ukrainian and Russian forms miss (measured 2026-11-06, section 4.3).
-- The expansion parser ignores unlabelled lines; a reply without labels loses the paraphrases too.
+- The expansion parser reads unlabelled lines only under a `PHRASING:` or `KEYWORDS:` label; a reply with no label at all loses the paraphrases too.
 - The real chat model copied the Ukrainian example into the keywords of an English question until the prompt got a separate sentence on the keyword language (probe 2026-11-06).
 - OCR text has spacing noise inside numbers ("2 0 мм" for "20 мм"), so exact-token keyword search can miss numeric answers.
 
