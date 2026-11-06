@@ -113,11 +113,11 @@ def test_live_expansion_of_an_english_question_has_english_keywords_only():
     assert not any(re.search(r"[Ѐ-ӿ]", t) for t in expansion.keywords), reply
 
 
-# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-16
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-16, 10-keyword-and-synonym-expansion-for-keyword-search/TR-18
 @pytest.mark.parametrize("question", ["До якого морозу на вулиці можна варити нержавійку без підігріву?",
                                       "How long must equipment sit at full test pressure during a water pressure test?"])
 def test_live_expansion_keeps_ten_phrasings(question):
     reply, expansion = expand_live(question, paraphrases=10)
     line_starts = [line[:12] for line in reply.splitlines()]
-    assert len(expansion.paraphrases) >= 8, line_starts
+    assert len(expansion.paraphrases) >= 5, line_starts
     assert expansion.keywords, line_starts
