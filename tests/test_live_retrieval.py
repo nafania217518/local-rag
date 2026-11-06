@@ -56,11 +56,22 @@ def report(label, without, with_keywords):
           f"gained {gained}, lost {lost}")
 
 
-# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-10, 10-keyword-and-synonym-expansion-for-keyword-search/TR-12
+def eval_workspace(conn):
+    documents = sorted({e["document"] for e in QUESTIONS})
+    found = {name: ws for name, ws in conn.execute(
+        f"SELECT name, workspace_id FROM documents WHERE name IN ({','.join('?' * len(documents))})", documents)}
+    missing = [name for name in documents if name not in found]
+    assert not missing, f"documents of the question set are missing from the database: {missing}"
+    workspaces = set(found.values())
+    assert len(workspaces) == 1, f"documents of the question set sit in several workspaces: {sorted(workspaces)}"
+    return workspaces.pop()
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-10, 10-keyword-and-synonym-expansion-for-keyword-search/TR-12, 10-keyword-and-synonym-expansion-for-keyword-search/TR-14
 def test_live_keyword_ranking_does_not_lower_the_fused_hit_rate(tmp_path):
     conn = copy_eval_db(tmp_path)
     cfg = {**config.DEFAULTS, "api_key": os.environ["NVIDIA_API_KEY"]}
-    ws = conn.execute("SELECT workspace_id FROM documents WHERE name = ?", (QUESTIONS[0]["document"],)).fetchone()[0]
+    ws = eval_workspace(conn)
     fused_hits = {"without": [], "with": []}
     source_hits = {"without": [], "with": []}
     with_keywords_count = 0
@@ -87,6 +98,7 @@ def test_live_keyword_ranking_does_not_lower_the_fused_hit_rate(tmp_path):
                 fused_hits[variant].append(number)
             if is_hit(sources, entry):
                 source_hits[variant].append(number)
+    print()  # pytest -s leaves the cursor after the test name
     report(f"fused top {cfg['rerank_candidates']}", fused_hits["without"], fused_hits["with"])
     report(f"top {cfg['sources']} after rerank", source_hits["without"], source_hits["with"])
     print(f"questions with keywords: {with_keywords_count}/{len(QUESTIONS)}")
