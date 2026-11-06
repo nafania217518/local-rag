@@ -151,6 +151,7 @@ Format: the caveat line of the armory `core` skill, section Reports
 - The autouse fixture `no_configure_logging` lets the real `configure_logging` run only for the tests it lists by name, so a renamed `test_configure_logging_*` test runs against a no-op stub : tests/test_app.py
 - With `paraphrases` 10 the real chat model often writes one PHRASING or KEYWORDS label and puts the other items on unlabelled lines below it (hand test and probe 2026-11-06) : src/localrag/retrieval.py
 - The Settings save button skips the browser's min and max checks, so a value below an input's minimum (keyword groups 0) is saved : src/localrag/static/index.html
-- `test_live_expansion_keeps_ten_phrasings` failed in 1 of 5 standalone runs (6 phrasings kept, 8 required); the reply was not captured, so the cause is not known : tests/test_live_languages.py
+- `test_live_expansion_keeps_ten_phrasings` failed in 1 of 5 standalone runs (6 phrasings kept, 8 required); the reply was not captured : tests/test_live_languages.py
 - A plain line under an INTENT label belongs to the INTENT section, so the parser drops a multi-line intent as a whole : src/localrag/retrieval.py
 - A markdown heading such as `## KEYWORDS:` is not a label, so under a PHRASING section the heading and the keyword lines after it become phrasings : src/localrag/retrieval.py
+- With `paraphrases` 10 the real model writes duplicate phrasings for the Ukrainian live-test question, and the parser drops them: 8 to 10 kept over 8 calls, 10 of 10 for the English question (probe 2026-11-06) : tests/test_live_languages.py
