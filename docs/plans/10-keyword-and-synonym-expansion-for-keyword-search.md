@@ -95,6 +95,14 @@ The `BR` items live in the parent item. Each new test carries `# req: 10-keyword
   (expansion step, keyword-ranking step, the cost line moved below the list), section 4.7
   (the two settings), section 8 (caveats) and the dated measurement result.
   - tests: none, documentation; TR-1 to TR-10 prove the behaviour it describes
+- TR-12 (BR-7): the measurement MUST also print, for both variants, the mean reciprocal
+  rank of the first hit in the fused list, and the hit rate of each keyword-search
+  ranking alone in its top `candidates`: the question ranking and the keyword-term
+  ranking. It MUST assert nothing on these numbers. Amendment of 2026-11-06, approved by
+  the user: both variants hit 30/30 in the fused top 20, so that cutoff shows no gain
+  and no loss. TR-12 runs before TR-11.
+  - tests: `tests/test_live_retrieval.py::test_live_keyword_ranking_does_not_lower_the_fused_hit_rate`
+    (the same live test prints the new numbers)
 
 Gates and verification:
 
