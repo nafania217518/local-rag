@@ -124,16 +124,46 @@ Runs in a background thread per document. The UI polls document status.
 
 Sizes are settings (section 4.7); defaults in brackets.
 
-0. Paraphrase: when `paraphrase` is on, one chat call with reasoning off writes `paraphrases` (2) alternative phrasings of the question in its own language, one per line. Numbering, quotes, blanks and duplicates are stripped. If the call fails, the question runs alone. The queries are the original plus the paraphrases. The corpus is technical documentation, so the prompt asks for the formal technical terms of standards instead of everyday words, with one Ukrainian example given as a full question ("Як варити труби?" becomes "Як зварювати трубопроводи?") after the rules, and it says to write in the language of the question, not of the example: a bare example made the model answer English questions in Ukrainian (probe 2026-10-30). The Settings input allows 1 to 10 paraphrases.
-1. FTS5 `MATCH` per query, top `candidates` (30, BM25 order).
+0. Expansion (`expand`): when `paraphrase` is on, one chat call with reasoning off returns labelled lines in this order: one `INTENT:` line (what the user wants to find), `paraphrases` (2) `PHRASING:` lines, and at most `keyword_groups` (4) `KEYWORDS:` lines. A `KEYWORDS:` line holds one domain term of the question and at most `keyword_synonyms` (3) synonyms in the language of the question, then the same in English, separated by `;`. An English question gets English only. The intent line exists so that the model derives the keywords from it. The parser drops it: it is not searched, shown or stored, and it changes no route. `Expansion` holds only `paraphrases` and `keywords`. The queries are the original plus the paraphrases.
+   - Parsing: labels match case-insensitively, after a bullet or a number and inside markdown bold. Unlabelled lines are ignored, so a reply in the old one-phrasing-per-line format gives nothing. Phrasings: quotes stripped, copies of the question and duplicates dropped, capped at `paraphrases`. Keywords: only the first `keyword_groups` lines count, blank terms are dropped, duplicates are removed across groups ignoring case, and the groups are flattened to one list of distinct terms. A reply with only one kind of line keeps that kind. If the call fails, the question runs alone.
+   - Prompt: the corpus is technical documentation, so the prompt asks for the formal technical terms of standards instead of everyday words, with one Ukrainian example given as a full question ("Як варити труби?" becomes "Як зварювати трубопроводи?") after the rules. Two language sentences follow the example. The intent and the phrasings are in the language of the question, not of the example: a bare example made the model answer English questions in Ukrainian (probe 2026-10-30). The keywords are in the language of the question and in English, and for an English question every keyword is in English: the real model copied the Ukrainian example into the keywords of an English question (probe 2026-11-06). The Settings input allows 1 to 10 paraphrases.
+   - With `paraphrase` off, no chat request runs and there is no keyword ranking. Keyword expansion has no toggle of its own. With `paraphrases` below 1 (possible only in config.json) the request still runs and gives keywords only.
+1. FTS5 `MATCH` per query (the original question plus the paraphrases), top `candidates` (30, BM25 order).
 2. Embed all queries in one call with `input_type=query`, sqlite-vec KNN per vector, top `candidates` (30, cosine).
-3. Reciprocal Rank Fusion (`k=60`) over all FTS and vector rankings, top `rerank_candidates` (20).
-4. Rerank them against the original question with `nemotron-3.5-rerank-8b`, keep top `sources` (6).
-
-Cost per question: one chat request for the paraphrases, one embed, one rerank, then the answer stream. The paraphrases are not shown or stored; a follow-up question is paraphrased without the chat history.
-5. Return chunks with `document name`, `page`, `text`, `score`.
+3. Keyword ranking (`keyword_ranking`): one extra FTS5 query (`db.fts_search_terms`) ORs every distinct keyword term, each as one quoted phrase (inner quotes doubled), top `candidates` (30). It matches exact tokens: no stemming and no prefix match. The keywords are not embedded and never reach the reranker. It is a separate ranking because FTS5 bm25 scores each OR'd phrase on its own and counts a repeated phrase twice, so synonyms appended to the question query would outweigh the question's own terms. It is a flat OR and not an AND of per-group OR groups because, with exact tokens, a chunk rarely holds a form from every group, so the ranking would be empty.
+4. Reciprocal Rank Fusion (`k=60`) over all FTS rankings, all vector rankings and the keyword ranking, top `rerank_candidates` (20).
+5. Rerank them against the original question with `nemotron-3.5-rerank-8b`, keep top `sources` (6).
+6. Return chunks with `document name`, `page`, `text`, `score`.
 
 Reranking is a setting (`rerank: true`). Off → RRF top 6.
+
+`retrieve()` is composed of the public steps `expand`, `search_rankings`, `keyword_ranking`, `fuse` and `pick_sources`; the measurement reuses them to fuse with and without the keyword ranking from one expansion.
+
+Cost per question: still one chat request for the expansion, one embed, one rerank, then the answer stream. The expansion reply is 2 to 3 times longer than the paraphrases alone, so the answer starts later. The intent, the paraphrases and the keywords are not shown or stored; a follow-up question is expanded without the chat history.
+
+#### Measurement of the keyword ranking (2026-11-06)
+
+- Question set: `tests/data/keyword_eval.json`, 30 questions reviewed by the user (12 Ukrainian, 9 Russian, 9 English), 10 per document over the three НАЕК standards (757 chunks, Ukrainian), each with its expected document and pages. 21 of 30 avoid the formal term of the standard.
+- The live test `tests/test_live_retrieval.py` runs on a backup copy of the app database with `config.DEFAULTS`. It makes one expansion per question and fuses the same rankings with and without the keyword ranking. A hit is an expected (document, page) in the list.
+- Command: `LOCALRAG_EVAL_DB="$HOME/Library/Application Support/LocalRAG/localrag.db" uv run pytest -m live tests/test_live_retrieval.py --no-cov -s`, with `NVIDIA_API_KEY` set. About 120 requests, about 4 minutes.
+
+| Measure | Without keywords | With keywords |
+|---|---|---|
+| Fused top 20 hit rate | 30/30 | 30/30 |
+| Top 6 after rerank | 30/30 | 30/30 |
+| Fused mean reciprocal rank | 0.760 | 0.761 |
+
+The first hit is better for 1 question and worse for 2.
+
+Keyword-search rankings alone, top 30: the question ranking hits 14/30 (mean reciprocal rank 0.194); the keyword-term ranking hits 6/30 (0.152). One question is hit only by the keyword-term ranking; nine only by the question ranking. Keyword-term ranking per language: uk 4/12, ru 1/9, en 1/9. The model returned keywords for 30 of 30 questions.
+
+Conclusion: the keyword ranking does no harm and gives no measurable gain on this corpus. Vector search already puts every answer page into the top 20. The keyword-term ranking is weaker than the question ranking. The likely causes, not tested: keywords match exact tokens while the text holds inflected forms, and Russian and English keywords do not match Ukrainian text. Word forms are the next step: issue "Match Ukrainian and Russian word forms in keyword search" (https://github.com/nafania217518/local-rag/issues/11).
+
+Limits of the measurement:
+- 30 questions, so one question is 3.3 percentage points.
+- Chunks overlap at page boundaries, so the strict page check can count a correct hit as a miss (both variants share the check).
+- The result holds only while the default embed model is the one that indexed the database.
+- The test takes the workspace of the first question's document.
 
 ### 4.4 Chat (`chat.py`)
 
@@ -183,6 +213,8 @@ Three columns: workspaces + documents list (left), chat with a session selector 
 | Retrieval | `rerank` | true |
 | Retrieval | `paraphrase` | true |
 | Retrieval | `paraphrases` | 2 |
+| Retrieval | `keyword_groups` | 4 |
+| Retrieval | `keyword_synonyms` | 3 |
 | Retrieval | `sources` | 6 |
 | Retrieval | `candidates` | 30 |
 | Retrieval | `rerank_candidates` | 20 |
@@ -191,6 +223,8 @@ Three columns: workspaces + documents list (left), chat with a session selector 
 | Indexing | `ocr_quality_min` | 0.8 |
 | Indexing | `min_text_chars` | 20 |
 | Indexing | `render_dpi` | 150 |
+
+The Settings inputs allow 1 to 10 keyword groups per question and 0 to 10 synonyms per keyword and language. Both apply only when `paraphrase` is on.
 
 Kept hardcoded: the RRF constant, retries and backoff, the embed batch size, the OCR token cap (9000), the embedding dimension. `load_config` replaces a saved `parse_model` of `nvidia/nemotron-parse` or `nvidia/nemotron-parse-2.0` with the default, because those names return 404 on the parse URL. Chunk and OCR settings apply at indexing time only: a document indexed before the change keeps its chunks until it is deleted and added again (the scan button re-indexes too, but forces OCR).
 
@@ -218,7 +252,7 @@ Limits to know:
 | parsers.py | unit with fixture files (text PDF, scanned PDF, DOCX, TXT) | `parse_page` fake |
 | chunker (in index.py) | unit | none |
 | nvidia.py | unit with `respx` mocked HTTP, asserts URLs, headers, `input_type` | respx |
-| index.py / retrieval.py / chat.py | unit, fake embed/rerank/chat functions | in-memory fakes |
+| index.py / retrieval.py / chat.py | unit, fake embed/rerank/chat functions (retrieval: expansion parsing, keyword ranking) | in-memory fakes |
 | api.py | integration with FastAPI `TestClient`, SSE parsed | fakes injected |
 | UI | browser tests with Playwright against the FastAPI server + fake NVIDIA | fakes |
 | packaging | text asserts on the spec and the workflow; the exe is checked by hand with `--serve` and `/health` | real build |
@@ -268,6 +302,12 @@ Local models, translation layer, images in answers, document editing, multi-user
 - Windows bundle smoke test is only verified in CI; the local build check ran on macOS.
 - The macOS build was dropped, then the CI build too: CI runs the tests on Windows on pull requests; the release zip with the one-file exe is built by hand. A one-file exe unpacks itself into a temp folder on every start, so launch is slower than the one-folder build and antivirus may scan it; acceptable for one user per machine.
 - Remote default branch is `master`. Each phase branch was cut from the previous phase branch, because `master` holds only the initial commit until the phases are merged.
+- Python's stdlib `sqlite3` cannot register a custom FTS5 tokenizer, so FTS5 synonym support (colocated tokens) is out of reach; keyword terms run as a separate OR query built in Python.
+- FTS5 bm25 scores each OR'd phrase on its own and counts a repeated phrase twice; keyword terms are deduplicated and fused as their own ranking.
+- Keyword terms match exact tokens only; inflected Ukrainian and Russian forms miss (measured 2026-11-06, section 4.3).
+- The expansion parser ignores unlabelled lines; a reply without labels loses the paraphrases too.
+- The real chat model copied the Ukrainian example into the keywords of an English question until the prompt got a separate sentence on the keyword language (probe 2026-11-06).
+- OCR text has spacing noise inside numbers ("2 0 мм" for "20 мм"), so exact-token keyword search can miss numeric answers.
 
 ## 9. Feature: OCR pass for scanned documents
 
