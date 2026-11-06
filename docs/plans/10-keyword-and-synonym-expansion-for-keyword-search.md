@@ -103,6 +103,21 @@ The `BR` items live in the parent item. Each new test carries `# req: 10-keyword
   and no loss. TR-12 runs before TR-11.
   - tests: `tests/test_live_retrieval.py::test_live_keyword_ranking_does_not_lower_the_fused_hit_rate`
     (the same live test prints the new numbers)
+- TR-13 (BR-1): `expand` MUST give no phrasings when `paraphrases` is below 1, MUST ask
+  for 0 PHRASING lines then, and MUST still read the keywords. Defect in built code,
+  found by the final review on 2026-11-06: a negative value kept phrasings.
+  - tests: `tests/test_retrieval.py::test_expand_with_paraphrases_below_one_gives_keywords_only`
+- TR-14 (BR-7): the measurement MUST fail before any API request when a document of the
+  question set is missing from the database or the documents sit in more than one
+  workspace. Its first printed line MUST start on a new line. Review finding, fixed by
+  the user's quiz answer of 2026-11-06.
+  - tests: none, a precondition inside a live test; the live run proves the pass path
+- TR-15 (scope addition, the user's quiz answer of 2026-11-06): no test name MUST carry
+  a requirement id. The 58 tests named `test_tr<n>_...` in `tests/test_app.py`,
+  `test_build_script.py`, `test_config.py`, `test_index.py`, `test_nvidia.py`,
+  `test_packaging.py` and `test_ui.py` MUST lose the `tr<n>_` prefix and carry the marker
+  `# req: <their task branch>/TR-n` instead. No test body changes.
+  - tests: none, a rename; the count of collected tests stays the same
 
 Gates and verification:
 
@@ -127,6 +142,9 @@ Gates and verification:
 - `tests/test_retrieval.py::test_retrieve_embeds_original_and_paraphrases_in_one_call` : rework : the reply gets PHRASING labels.
 - `tests/test_retrieval.py::test_retrieve_reranks_with_original_question` : rework : the reply gets PHRASING and KEYWORDS lines, else the test passes with no evidence.
 - `tests/test_config.py::test_defaults_cover_every_tunable` : rework : two new keys.
+- `tests/test_live_retrieval.py::test_live_keyword_ranking_does_not_lower_the_fused_hit_rate` : rework : TR-12 numbers, then the TR-14 precondition.
+- `tests/test_retrieval.py::test_keyword_eval_set_has_about_30_questions_in_three_languages` : rework : asserts the exact language set (review finding).
+- the 58 tests named `test_tr<n>_...` in seven test files : rework : rename only (TR-15).
 
 ## Risks
 
