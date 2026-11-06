@@ -26,7 +26,9 @@ EXPAND_PROMPT = (
     "the question, then the same term and at most {synonyms} synonyms in English. "
     "For an English question, write English only.\n"
     "Example for a Ukrainian question: 'Як варити труби?' becomes 'Як зварювати трубопроводи?'. "
-    "Write the intent and the phrasings in the language of the question, not in the language of the example."
+    "Write the intent and the phrasings in the language of the question, not in the language of the example. "
+    "Write the keywords in the language of the question and in English; when the question is in English, "
+    "every keyword is in English."
     "\n\nQuestion: {question}")
 
 _LABELLED = re.compile(r"^\s*(?:[-*•]|\d+[.)])?\s*\**\s*(INTENT|PHRASING|KEYWORDS)\s*\**\s*:\s*\**(.*?)\**\s*$",
