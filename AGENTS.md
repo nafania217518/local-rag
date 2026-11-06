@@ -137,7 +137,7 @@ Format: the caveat line of the armory `core` skill, section Reports
 - `db.connect` writes the schema on open, so the hit-rate measurement runs on a backup copy of the app database : —
 - The expansion parser ignores unlabelled lines, so a reply in the old one-phrasing-per-line format gives no paraphrases : src/localrag/retrieval.py
 - Keyword terms match exact tokens only; inflected Ukrainian and Russian forms miss until word forms ship : src/localrag/retrieval.py
-- The expansion prompt's language clause covers only the intent and the phrasings, because the keywords must also be in English : src/localrag/retrieval.py
+- The expansion prompt has two language sentences: the clause after the example covers the intent and the phrasings, and the next sentence covers the keywords, which must also be in English : src/localrag/retrieval.py
 - FTS5 bm25 scores each OR'd phrase on its own and counts a repeated phrase twice, so keyword terms are deduplicated and run as a separate ranking : src/localrag/db.py
 - Chunks overlap at page boundaries, so the same sentence can sit in chunks of two adjacent pages; a strict one-page check can mark a correct hit as a miss : —
 - OCR text has spacing noise inside numbers ("2 0 мм" for "20 мм"), so exact-token keyword search can miss numeric answers : —
