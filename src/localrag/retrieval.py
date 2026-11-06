@@ -56,7 +56,7 @@ def expand(cfg, question, chat_stream=nvidia.chat_stream) -> Expansion:
 
 
 def _parse_expansion(reply, question, n, groups) -> Expansion:
-    phrasings, terms, keyword_lines = [], [], 0
+    phrasings, terms, keyword_lines, seen = [], [], 0, set()
     for line in reply.splitlines():
         match = _LABELLED.match(line)
         if not match:
@@ -68,7 +68,6 @@ def _parse_expansion(reply, question, n, groups) -> Expansion:
                 phrasings.append(phrasing)
         elif label == "KEYWORDS" and keyword_lines < groups:
             keyword_lines += 1
-            seen = {t.casefold() for t in terms}
             for term in (t.strip() for t in body.split(";")):
                 if term and term.casefold() not in seen:
                     seen.add(term.casefold())
