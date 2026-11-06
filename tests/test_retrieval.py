@@ -436,6 +436,7 @@ def test_keyword_eval_set_has_about_30_questions_in_three_languages():
     entries = json.loads((Path(__file__).parent / "data" / "keyword_eval.json").read_text(encoding="utf-8"))
     langs = Counter(e["lang"] for e in entries)
     assert 27 <= len(entries) <= 33
+    assert set(langs) == {"uk", "ru", "en"}
     assert all(langs[lang] >= 8 for lang in ("uk", "ru", "en"))
     assert all(set(e) == {"lang", "question", "document", "pages"} and e["question"] and e["document"]
                and e["pages"] and all(isinstance(p, int) for p in e["pages"]) for e in entries)
