@@ -101,6 +101,12 @@ Project-only rules. The armory skills hold the rest.
 Format: `Term : one-line meaning`, plus `. Avoid: <synonyms>` when a synonym was rejected.
 A line MUST hold only a term of the project's domain, with no implementation detail.
 
+- Expansion : the intent, the paraphrases and the keyword groups that the chat model writes for one question
+- Intent : one line that says what the user wants to find; it guides the keywords and is never shown or stored
+- Keyword group : one domain term of the question with its synonyms
+- Question set : the fixed list of questions, each with its expected document and pages, that measures search quality
+- Hit rate : the share of the question set whose expected page is among the top candidates
+
 ## Caveats
 
 Format: the caveat line of the armory `core` skill, section Reports
@@ -128,3 +134,8 @@ Format: the caveat line of the armory `core` skill, section Reports
 - The chat model copies the language of a bare example in the paraphrase prompt (an English question got Ukrainian paraphrases); the example is a full question pair after the rules, with an explicit "language of the question, not of the example" clause : docs/DESIGN.md
 - Question paraphrasing costs one extra chat request per question (four requests per question with rerank and the answer); a failed paraphrase call falls back to the original question : docs/DESIGN.md
 - A Rosetta crash (rosetta error: invalid gdt selector index 5) can kill Wine's pip during the Docker build at random (2 of 3 runs on 2026-10-30, same image and settings as a passing run the day before); a rerun passes; scripts/build-windows.sh detects it from the build log : docs/DESIGN.md
+- `db.connect` writes the schema on open, so the hit-rate measurement runs on a backup copy of the app database : —
+- The expansion parser ignores unlabelled lines, so a reply in the old one-phrasing-per-line format gives no paraphrases : src/localrag/retrieval.py
+- Keyword terms match exact tokens only; inflected Ukrainian and Russian forms miss until word forms ship : src/localrag/retrieval.py
+- The expansion prompt's language clause covers only the intent and the phrasings, because the keywords must also be in English : src/localrag/retrieval.py
+- FTS5 bm25 scores each OR'd phrase on its own and counts a repeated phrase twice, so keyword terms are deduplicated and run as a separate ranking : src/localrag/db.py
