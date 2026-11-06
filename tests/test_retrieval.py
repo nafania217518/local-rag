@@ -1,7 +1,7 @@
 import pytest
 
 from localrag import config, db
-from localrag.retrieval import paraphrase, retrieve, rrf
+from localrag.retrieval import Expansion, expand, retrieve, rrf
 
 E1, E2, E3, E4 = [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]
 
@@ -171,21 +171,23 @@ def fake_chat(reply, calls=None):
     return chat_stream
 
 
-def test_paraphrase_asks_chat_model_once_for_n_lines_with_no_reasoning(cfg):
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-4
+def test_expand_asks_chat_model_once_with_no_reasoning(cfg):
     cfg.update(paraphrase=True, paraphrases=2)
     calls = []
-    out = paraphrase(cfg, "what is x?", fake_chat("p1\np2", calls))
-    assert out == ["p1", "p2"]
+    out = expand(cfg, "what is x?", fake_chat("PHRASING: p1\nPHRASING: p2", calls))
+    assert out.paraphrases == ("p1", "p2")
     assert len(calls) == 1
     _, messages, effort = calls[0]
     assert effort == "none"
-    assert "what is x?" in messages[0]["content"] and "2" in messages[0]["content"]
+    assert "what is x?" in messages[0]["content"] and "2 different phrasings" in messages[0]["content"]
 
 
-def test_tr24_paraphrase_prompt_asks_for_formal_technical_terms(cfg):
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-4
+def test_expand_prompt_asks_for_formal_technical_terms(cfg):
     cfg.update(paraphrase=True, paraphrases=2)
     calls = []
-    paraphrase(cfg, "як варити труби?", fake_chat("p1\np2", calls))
+    expand(cfg, "як варити труби?", fake_chat("", calls))
     content = calls[0][1][0]["content"]
     assert "technical terms" in content
     assert "зварювати трубопроводи" in content
@@ -193,34 +195,70 @@ def test_tr24_paraphrase_prompt_asks_for_formal_technical_terms(cfg):
     assert content.endswith("Question: як варити труби?")
 
 
-def test_tr25_paraphrase_prompt_example_is_a_question_and_the_language_rule_follows_it(cfg):
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-4
+def test_expand_prompt_example_is_a_question_and_the_language_rule_follows_it(cfg):
     cfg.update(paraphrase=True, paraphrases=2)
     calls = []
-    paraphrase(cfg, "how to check welds?", fake_chat("p1\np2", calls))
+    expand(cfg, "how to check welds?", fake_chat("", calls))
     content = calls[0][1][0]["content"]
     example = "'Як варити труби?' becomes 'Як зварювати трубопроводи?'"
+    clause = "Write the intent and the phrasings in the language of the question, not in the language of the example."
     assert example in content
-    assert "not in the language of the example" in content
-    assert content.index(example) > content.index("No numbering")
+    assert content.index(clause) > content.index(example) > content.index("No numbering")
+    assert content.index(example) > content.index("KEYWORDS:")
 
 
-def test_paraphrase_strips_numbering_blanks_and_duplicates_and_caps_at_n(cfg):
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-4
+def test_expand_prompt_asks_for_intent_then_phrasings_then_keywords(cfg):
     cfg.update(paraphrase=True, paraphrases=2)
-    assert paraphrase(cfg, "q", fake_chat('1. A\n\n- B\nA\n"C"\nq\n')) == ["A", "B"]
+    calls = []
+    expand(cfg, "q", fake_chat("", calls))
+    content = calls[0][1][0]["content"]
+    assert content.index("INTENT:") < content.index("PHRASING:") < content.index("KEYWORDS:")
+    assert "one line" in content.lower()
 
 
-def test_paraphrase_failure_returns_no_rewrites(cfg):
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-4
+def test_expand_prompt_asks_for_keywords_in_the_question_language_and_in_english(cfg):
+    cfg.update(paraphrase=True)
+    calls = []
+    expand(cfg, "q", fake_chat("", calls))
+    content = calls[0][1][0]["content"]
+    assert "<English term>" in content
+    assert "then the same term" in content and "in English" in content
+    assert "For an English question, write English only." in content
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-4
+def test_expand_prompt_takes_the_group_and_synonym_caps_from_config(cfg):
+    cfg.update(paraphrase=True, keyword_groups=7, keyword_synonyms=5)
+    calls = []
+    expand(cfg, "q", fake_chat("", calls))
+    content = calls[0][1][0]["content"]
+    assert "At most 7 lines" in content and "at most 5 synonyms" in content
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
+def test_expand_strips_numbering_blanks_and_duplicates_and_caps_at_n(cfg):
+    cfg.update(paraphrase=True, paraphrases=2)
+    reply = '1. PHRASING: A\n\n- PHRASING: B\nPHRASING: A\nPHRASING: "C"\nPHRASING: q\n'
+    assert expand(cfg, "q", fake_chat(reply)).paraphrases == ("A", "B")
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-6
+def test_expand_failure_returns_an_empty_expansion(cfg):
     cfg.update(paraphrase=True)
     def bad(*a, **k):
         raise RuntimeError("down")
         yield
-    assert paraphrase(cfg, "q", bad) == []
+    assert expand(cfg, "q", bad) == Expansion()
 
 
-def test_paraphrase_off_does_not_call_chat_model(cfg):
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-4
+def test_expand_off_does_not_call_chat_model(cfg):
     def boom(*a, **k):
         raise AssertionError("called")
-    assert paraphrase(cfg, "q", boom) == []
+    assert expand(cfg, "q", boom) == Expansion()
 
 
 def test_retrieve_fuses_fts_hits_found_only_by_a_paraphrase(env, cfg):
@@ -228,7 +266,7 @@ def test_retrieve_fuses_fts_hits_found_only_by_a_paraphrase(env, cfg):
     ids = db.add_chunks(conn, d1, ws, [(0, 1, "alpha words", E1), (1, 1, "omega words", E1)])
     cfg.update(rerank=False, paraphrase=True, paraphrases=1, sources=1)
     out = retrieve(conn, cfg, ws, "nothing", embed=fake_embed(E1), rerank=no_rerank,
-                   chat_stream=fake_chat("omega"))
+                   chat_stream=fake_chat("PHRASING: omega"))
     assert out[0]["id"] == ids[1]
 
 
@@ -240,7 +278,7 @@ def test_retrieve_embeds_original_and_paraphrases_in_one_call(env, cfg):
     def embed(cfg, texts, input_type):
         calls.append(texts)
         return [E1 for _ in texts]
-    retrieve(conn, cfg, ws, "q", embed=embed, rerank=no_rerank, chat_stream=fake_chat("p1\np2"))
+    retrieve(conn, cfg, ws, "q", embed=embed, rerank=no_rerank, chat_stream=fake_chat("PHRASING: p1\nPHRASING: p2"))
     assert calls == [["q", "p1", "p2"]]
 
 
