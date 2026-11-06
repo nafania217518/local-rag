@@ -133,6 +133,11 @@ The `BR` items live in the parent item. Each new test carries `# req: 10-keyword
     `test_expand_drops_lines_under_the_intent_label_and_before_the_first_label`,
     `test_expand_prompt_says_every_line_starts_with_its_label`;
     `tests/test_live_languages.py::test_live_expansion_keeps_ten_phrasings` (uk, en)
+- TR-17 (BR-6): the parser MUST strip a bullet or a number marker from a reply line only
+  when whitespace follows the marker, so a phrasing or a keyword that starts with a
+  decimal or a material number keeps its text (`1.5-кратний`, `1.4301`). Defect in built
+  code, found by the review of TR-16 on 2026-11-06.
+  - tests: `tests/test_retrieval.py::test_expand_keeps_a_leading_decimal_on_a_plain_line`
 
 Gates and verification:
 
