@@ -141,3 +141,5 @@ Format: the caveat line of the armory `core` skill, section Reports
 - FTS5 bm25 scores each OR'd phrase on its own and counts a repeated phrase twice, so keyword terms are deduplicated and run as a separate ranking : src/localrag/db.py
 - Chunks overlap at page boundaries, so the same sentence can sit in chunks of two adjacent pages; a strict one-page check can mark a correct hit as a miss : —
 - OCR text has spacing noise inside numbers ("2 0 мм" for "20 мм"), so exact-token keyword search can miss numeric answers : —
+- The real chat model copied the Ukrainian example into the keywords of an English question; one more sentence after the language clause of the expansion prompt fixes it : src/localrag/retrieval.py
+- `expand` sends the chat request also when `paraphrases` is below 1; only the `paraphrase` toggle stops it : src/localrag/retrieval.py
