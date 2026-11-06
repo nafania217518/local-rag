@@ -25,6 +25,7 @@ EXPAND_PROMPT = (
     "per domain term of the question. Each line holds the term and at most {synonyms} synonyms in the language of "
     "the question, then the same term and at most {synonyms} synonyms in English. "
     "For an English question, write English only.\n"
+    "Start every line with its label: INTENT:, PHRASING: or KEYWORDS:.\n"
     "Example for a Ukrainian question: 'Як варити труби?' becomes 'Як зварювати трубопроводи?'. "
     "Write the intent and the phrasings in the language of the question, not in the language of the example. "
     "Write the keywords in the language of the question and in English; when the question is in English, "

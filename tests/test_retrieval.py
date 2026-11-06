@@ -383,6 +383,16 @@ def test_expand_drops_lines_under_the_intent_label_and_before_the_first_label(cf
     assert expand(cfg, "q", fake_chat(reply)) == Expansion(("p1",))
 
 
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-16
+def test_expand_prompt_says_every_line_starts_with_its_label(cfg):
+    cfg.update(paraphrase=True)
+    calls = []
+    expand(cfg, "q", fake_chat("", calls))
+    content = calls[0][1][0]["content"]
+    rule = "Start every line with its label: INTENT:, PHRASING: or KEYWORDS:."
+    assert content.index(rule) < content.index("Example for a Ukrainian question")
+
+
 # req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
 def test_expand_without_keyword_lines_keeps_the_phrasings(cfg):
     cfg.update(paraphrase=True, paraphrases=2)
