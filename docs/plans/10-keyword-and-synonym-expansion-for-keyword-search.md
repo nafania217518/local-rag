@@ -124,7 +124,7 @@ The `BR` items live in the parent item. Each new test carries `# req: 10-keyword
   after INTENT and lines before the first label are dropped. The prompt MUST say that
   every line starts with its label. The measurement MUST also print how many questions
   got all their phrasings. With the real chat model and `paraphrases` 10, `expand` MUST
-  keep at least 8 phrasings. Defect found by the user's hand test on 2026-11-06 and
+  keep at least 8 phrasings. (The clause on 8 phrasings is replaced by TR-18.) Defect found by the user's hand test on 2026-11-06 and
   approved by the user: with 10 paraphrases the model often writes one PHRASING label
   and puts the other phrasings on plain lines below it, and the parser kept 0 or 1.
   - tests: `tests/test_retrieval.py`: `test_expand_reads_unlabelled_lines_under_a_phrasing_label`,
@@ -138,6 +138,11 @@ The `BR` items live in the parent item. Each new test carries `# req: 10-keyword
   decimal or a material number keeps its text (`1.5-кратний`, `1.4301`). Defect in built
   code, found by the review of TR-16 on 2026-11-06.
   - tests: `tests/test_retrieval.py::test_expand_keeps_a_leading_decimal_on_a_plain_line`
+- TR-18 (BR-6): with the real chat model and `paraphrases` 10, `expand` MUST keep at
+  least 5 phrasings. Amendment of 2026-11-06, approved by the user: the model writes
+  duplicate phrasings that the parser drops (8 to 10 kept in 16 probe calls, 6 once), so
+  the bar of 8 failed at random. The parser defect kept 0 or 1, so 5 still catches it.
+  - tests: `tests/test_live_languages.py::test_live_expansion_keeps_ten_phrasings` (uk, en)
 
 Gates and verification:
 
