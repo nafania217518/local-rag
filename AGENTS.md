@@ -149,3 +149,5 @@ Format: the caveat line of the armory `core` skill, section Reports
 - The hit-rate measurement runs on `config.DEFAULTS` (paraphrases 2, sources 6), not on the user's saved settings, so its numbers describe a new install : tests/test_live_retrieval.py
 - In the second measurement run of 2026-11-06 the keyword ranking lowered the fused mean reciprocal rank from 0.795 to 0.740 with every hit rate unchanged; the first run gave 0.760 against 0.761 : docs/DESIGN.md
 - The autouse fixture `no_configure_logging` lets the real `configure_logging` run only for the tests it lists by name, so a renamed `test_configure_logging_*` test runs against a no-op stub : tests/test_app.py
+- With `paraphrases` 10 the real chat model often writes one PHRASING label and puts the other phrasings on unlabelled lines below it, and does the same under KEYWORDS (hand test and probe 2026-11-06); with 2 it labelled every line : src/localrag/retrieval.py
+- The Settings save button skips the browser's min and max checks, so a value below an input's minimum (keyword groups 0) is saved : src/localrag/static/index.html

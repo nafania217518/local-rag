@@ -47,6 +47,7 @@ The `BR` items live in the parent item. Each new test carries `# req: 10-keyword
   blank terms dropped, duplicates removed across groups ignoring case; INTENT lines are
   dropped; labels match case-insensitively after a bullet or number and inside markdown
   bold; unlabelled lines are ignored; a reply with only one kind of line keeps that kind.
+  (The clause on unlabelled lines is replaced by TR-16.)
   - tests: `tests/test_retrieval.py`: `test_expand_reads_phrasings_and_keyword_terms_from_labelled_lines`,
     `test_expand_drops_the_intent_line`,
     `test_expand_splits_a_keyword_group_on_semicolons_and_drops_blank_terms`,
@@ -118,6 +119,20 @@ The `BR` items live in the parent item. Each new test carries `# req: 10-keyword
   `test_packaging.py` and `test_ui.py` MUST lose the `tr<n>_` prefix and carry the marker
   `# req: <their task branch>/TR-n` instead. No test body changes.
   - tests: none, a rename; the count of collected tests stays the same
+- TR-16 (BR-6): a label line opens a section. An unlabelled line after a PHRASING label
+  is a phrasing, and after a KEYWORDS label a keyword group, until the next label. Lines
+  after INTENT and lines before the first label are dropped. The prompt MUST say that
+  every line starts with its label. The measurement MUST also print how many questions
+  got all their phrasings. With the real chat model and `paraphrases` 10, `expand` MUST
+  keep at least 8 phrasings. Defect found by the user's hand test on 2026-11-06 and
+  approved by the user: with 10 paraphrases the model often writes one PHRASING label
+  and puts the other phrasings on plain lines below it, and the parser kept 0 or 1.
+  - tests: `tests/test_retrieval.py`: `test_expand_reads_unlabelled_lines_under_a_phrasing_label`,
+    `test_expand_reads_unlabelled_lines_under_a_keywords_label`,
+    `test_expand_reads_a_label_alone_on_its_line`,
+    `test_expand_drops_lines_under_the_intent_label_and_before_the_first_label`,
+    `test_expand_prompt_says_every_line_starts_with_its_label`;
+    `tests/test_live_languages.py::test_live_expansion_keeps_ten_phrasings` (uk, en)
 
 Gates and verification:
 
@@ -145,6 +160,8 @@ Gates and verification:
 - `tests/test_live_retrieval.py::test_live_keyword_ranking_does_not_lower_the_fused_hit_rate` : rework : TR-12 numbers, then the TR-14 precondition.
 - `tests/test_retrieval.py::test_keyword_eval_set_has_about_30_questions_in_three_languages` : rework : asserts the exact language set (review finding).
 - the 58 tests named `test_tr<n>_...` in seven test files : rework : rename only (TR-15).
+- `tests/test_retrieval.py::test_expand_ignores_unlabelled_lines` : rework : only lines before the first label and under INTENT are dropped (TR-16).
+- `tests/test_live_retrieval.py::test_live_keyword_ranking_does_not_lower_the_fused_hit_rate` : rework : prints the count of questions with all phrasings (TR-16).
 
 ## Risks
 
