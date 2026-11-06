@@ -100,7 +100,8 @@ def test_settings_dialog_saves_api_key(page, server):
     assert httpx.get(f"{server}/settings").json()["api_key"] == "nvapi-test"
 
 
-def test_tr5_settings_dialog_saves_parse_url_after_rerank_url(page, server):
+# req: feature/nemotron-3.5-parse/TR-5
+def test_settings_dialog_saves_parse_url_after_rerank_url(page, server):
     page.goto(server)
     page.click("#settings-btn")
     expect(page.locator('#settings fieldset:has(legend:text("Connection")) label:has([name="rerank_url"]) + label'
@@ -143,7 +144,8 @@ def test_settings_saves_keyword_limits(page, server):
     assert type(got["keyword_groups"]) is int and type(got["keyword_synonyms"]) is int
 
 
-def test_tr23_settings_saves_ten_paraphrases(page, server):
+# req: feature/nemotron-3.5-parse/TR-23
+def test_settings_saves_ten_paraphrases(page, server):
     page.goto(server)
     page.click("#settings-btn")
     expect(page.locator("#settings")).to_be_visible()
@@ -478,7 +480,8 @@ _TR14_DOCS = [
     {"id": 3, "name": "f.pdf", "status": "failed", "error": _TR14_ERROR, "pages": None}]
 
 
-def test_tr14_failed_row_dot_opens_error_dialog_with_message(page, server):
+# req: feature/nemotron-3.5-parse/TR-14
+def test_failed_row_dot_opens_error_dialog_with_message(page, server):
     _stub_docs(page, server, _TR14_DOCS)
     page.click("#documents li[data-id='3'] button.status")
     dialog = page.locator("#error-dialog")
@@ -489,7 +492,8 @@ def test_tr14_failed_row_dot_opens_error_dialog_with_message(page, server):
     expect(dialog).to_be_hidden()
 
 
-def test_tr14_indexed_and_pending_dots_are_not_buttons(page, server):
+# req: feature/nemotron-3.5-parse/TR-14
+def test_indexed_and_pending_dots_are_not_buttons(page, server):
     _stub_docs(page, server, _TR14_DOCS)
     for i in (1, 2):
         row = page.locator(f"#documents li[data-id='{i}']")
@@ -591,7 +595,8 @@ def test_settings_saves_numbers_as_numbers(page, server):
     assert cfg["temperature"] == 0.2
 
 
-def test_tr22_settings_saves_embed_attempts(page, server):
+# req: feature/nemotron-3.5-parse/TR-22
+def test_settings_saves_embed_attempts(page, server):
     page.goto(server)
     page.click("#settings-btn")
     page.fill('#settings [name="embed_attempts"]', "7")

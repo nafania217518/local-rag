@@ -124,8 +124,9 @@ def test_rerank_raises_on_http_error():
         nvidia.rerank(cfg, "q", ["a"])
 
 
+# req: feature/nemotron-3.5-parse/TR-2
 @respx.mock
-def test_tr2_parse_page_posts_png_as_document_part_to_parse_url():
+def test_parse_page_posts_png_as_document_part_to_parse_url():
     route = respx.post(PARSE).mock(return_value=parse_resp("p"))
     png = b"\x89PNG fake"
     nvidia.parse_page(cfg, png)
@@ -133,8 +134,9 @@ def test_tr2_parse_page_posts_png_as_document_part_to_parse_url():
     assert b'name="document"; filename="page.png"\r\nContent-Type: image/png\r\n\r\n' + png + b"\r\n" in body
 
 
+# req: feature/nemotron-3.5-parse/TR-2
 @respx.mock
-def test_tr2_parse_page_sends_bearer_key_and_accepts_json():
+def test_parse_page_sends_bearer_key_and_accepts_json():
     route = respx.post(PARSE).mock(return_value=parse_resp("p"))
     nvidia.parse_page(cfg, b"png")
     headers = route.calls.last.request.headers
@@ -142,8 +144,9 @@ def test_tr2_parse_page_sends_bearer_key_and_accepts_json():
     assert headers["Content-Type"].startswith("multipart/form-data; boundary=")
 
 
+# req: feature/nemotron-3.5-parse/TR-2
 @respx.mock
-def test_tr2_parse_page_sends_max_output_tokens_in_options_part():
+def test_parse_page_sends_max_output_tokens_in_options_part():
     route = respx.post(PARSE).mock(return_value=parse_resp("p"))
     nvidia.parse_page(cfg, b"png")
     body = route.calls.last.request.content.decode()
@@ -152,8 +155,9 @@ def test_tr2_parse_page_sends_max_output_tokens_in_options_part():
     assert nvidia.PARSE_MAX_TOKENS == 9000
 
 
+# req: feature/nemotron-3.5-parse/TR-2
 @respx.mock
-def test_tr2_parse_page_raises_on_http_error():
+def test_parse_page_raises_on_http_error():
     respx.post(PARSE).mock(return_value=httpx.Response(400, json={
         "object": "error", "message": "max_output_tokens must be between 1 and 9000"}))
     with pytest.raises(httpx.HTTPStatusError):
@@ -252,8 +256,9 @@ def test_retry_exponential_backoff_on_5xx(fake_time):
     assert sleeps == [1, 2, 4]
 
 
+# req: feature/nemotron-3.5-parse/TR-20
 @respx.mock
-def test_tr20_single_text_embed_429_gives_up_after_embed_attempts(fake_time):
+def test_single_text_embed_429_gives_up_after_embed_attempts(fake_time):
     route = respx.post(EMBED_URL).mock(return_value=httpx.Response(429, json={}))
     with pytest.raises(openai.APIStatusError):
         nvidia.embed(cfg10, ["a"], "query")
@@ -292,50 +297,57 @@ def test_every_client_call_passes_through_throttle(monkeypatch):
     assert calls == [cfg["rpm"]] * 4
 
 
+# req: feature/nemotron-3.5-parse/TR-4
 @respx.mock
-def test_tr4_parse_page_returns_empty_when_content_is_null():
+def test_parse_page_returns_empty_when_content_is_null():
     respx.post(PARSE).mock(return_value=parse_resp(None))
     assert nvidia.parse_page(cfg, b"png") == ""
 
 
+# req: feature/nemotron-3.5-parse/TR-3
 @respx.mock
-def test_tr3_parse_page_strips_box_and_class_tokens():
+def test_parse_page_strips_box_and_class_tokens():
     respx.post(PARSE).mock(return_value=parse_resp(
         "<x_0.751><y_0.0336>**СОУ НАЕК 160:2025**<x_0.9307><y_0.0477><class_Page-header>\n\n"
         "<x_0.1143><y_0.0852>Body line.<x_0.9297><y_0.1203><class_Text>"))
     assert nvidia.parse_page(cfg, b"png") == "**СОУ НАЕК 160:2025**\n\nBody line."
 
 
+# req: feature/nemotron-3.5-parse/TR-3
 @respx.mock
-def test_tr3_parse_page_still_strips_old_marker_tags():
+def test_parse_page_still_strips_old_marker_tags():
     respx.post(PARSE).mock(return_value=parse_resp("<tbc>Kyiv is the capital<sup>13</sup>.</tbc>"))
     assert nvidia.parse_page(cfg, b"png") == "Kyiv is the capital^13."
 
 
+# req: feature/nemotron-3.5-parse/TR-3
 @respx.mock
-def test_tr3_parse_page_unwraps_thead_and_drops_mbox():
+def test_parse_page_unwraps_thead_and_drops_mbox():
     respx.post(PARSE).mock(return_value=parse_resp(
         "<x_0.1><y_0.1>\\begin{tabular}{cc}\n\\multirow{2}{*}{\\thead{Назва}} & \\thead{Значення}\\\\\n"
         "\\mbox{} & 10 МПа<sup>2</sup>\\\\\n\\end{tabular}<x_0.9><y_0.2><class_Table>"))
     assert nvidia.parse_page(cfg, b"png") == "Назва | Значення\n | 10 МПа^2"
 
 
+# req: feature/nemotron-3.5-parse/TR-3
 @respx.mock
-def test_tr3_parse_page_flattens_latex_table():
+def test_parse_page_flattens_latex_table():
     respx.post(PARSE).mock(return_value=parse_resp(
         r"<x_0.1><y_0.1>\begin{tabular}{cc} Назва & Значення \\ Тиск & 10 МПа \\ \end{tabular}<x_0.9><y_0.2><class_Table>"
         "\n\n" r"<x_0.1><y_0.3>\multirow{2}{*}{**Умовна познака**}<x_0.9><y_0.4><class_Text>"))
     assert nvidia.parse_page(cfg, b"png") == "Назва | Значення\nТиск | 10 МПа\n\n**Умовна познака**"
 
 
+# req: feature/nemotron-3.5-parse/TR-7
 @respx.mock
-def test_tr7_parse_page_unwraps_nested_merged_cells():
+def test_parse_page_unwraps_nested_merged_cells():
     respx.post(PARSE).mock(return_value=parse_resp(r"\multicolumn{2}{c}{\multirow{2}{*}{X}} & b \\"))
     assert nvidia.parse_page(cfg, b"png") == "X | b"
 
 
+# req: feature/nemotron-3.5-parse/TR-8
 @respx.mock
-def test_tr8_parse_page_renders_superscript_with_caret():
+def test_parse_page_renders_superscript_with_caret():
     respx.post(PARSE).mock(return_value=parse_resp("10<sup>6</sup>"))
     assert nvidia.parse_page(cfg, b"png") == "10^6"
 
@@ -393,24 +405,27 @@ def _echo_unless(fail_sizes, status=500):
     return handler
 
 
+# req: feature/nemotron-3.5-parse/TR-10
 @respx.mock
-def test_tr10_embed_splits_batch_in_halves_on_5xx(fake_time):
+def test_embed_splits_batch_in_halves_on_5xx(fake_time):
     route = respx.post(EMBED_URL).mock(side_effect=_echo_unless({64}))
     texts = [str(i) for i in range(64)]
     assert nvidia.embed(cfg, texts, "passage") == [[float(i)] for i in range(64)]
     assert [len(json.loads(c.request.content)["input"]) for c in route.calls] == [64, 32, 32]
 
 
+# req: feature/nemotron-3.5-parse/TR-10
 @respx.mock
-def test_tr10_embed_splits_odd_batch_down_to_single_texts_in_order(fake_time):
+def test_embed_splits_odd_batch_down_to_single_texts_in_order(fake_time):
     route = respx.post(EMBED_URL).mock(side_effect=_echo_unless({2, 3}))
     assert nvidia.embed(cfg, ["1", "2", "3"], "passage") == [[1.0], [2.0], [3.0]]
     assert [json.loads(c.request.content)["input"] for c in route.calls] == [
         ["1", "2", "3"], ["1"], ["2", "3"], ["2"], ["3"]]
 
 
+# req: feature/nemotron-3.5-parse/TR-10
 @respx.mock
-def test_tr10_embed_single_text_5xx_still_retries_with_backoff(fake_time):
+def test_embed_single_text_5xx_still_retries_with_backoff(fake_time):
     _, sleeps = fake_time
     down = httpx.Response(503, json={})
     respx.post(EMBED_URL).mock(side_effect=[down, down, httpx.Response(200, json=embed_resp([[1.0]]))])
@@ -418,8 +433,9 @@ def test_tr10_embed_single_text_5xx_still_retries_with_backoff(fake_time):
     assert sleeps == [1, 2]
 
 
+# req: feature/nemotron-3.5-parse/TR-10
 @respx.mock
-def test_tr10_embed_429_on_a_batch_backs_off_instead_of_splitting(fake_time):
+def test_embed_429_on_a_batch_backs_off_instead_of_splitting(fake_time):
     _, sleeps = fake_time
     route = respx.post(EMBED_URL).mock(side_effect=[
         httpx.Response(429, json={}), httpx.Response(200, json=embed_resp([[1.0], [2.0]]))])
@@ -428,8 +444,9 @@ def test_tr10_embed_429_on_a_batch_backs_off_instead_of_splitting(fake_time):
     assert sleeps == [1]
 
 
+# req: feature/nemotron-3.5-parse/TR-10
 @respx.mock
-def test_tr10_embed_other_4xx_on_a_batch_raises_without_split(fake_time):
+def test_embed_other_4xx_on_a_batch_raises_without_split(fake_time):
     route = respx.post(EMBED_URL).mock(return_value=httpx.Response(401, json={}))
     with pytest.raises(openai.APIStatusError):
         nvidia.embed(cfg, ["a", "b"], "passage")
@@ -440,16 +457,18 @@ def _messages(caplog, level):
     return [r.getMessage() for r in caplog.records if r.name == "localrag.nvidia" and r.levelname == level]
 
 
+# req: feature/nemotron-3.5-parse/TR-11
 @respx.mock
-def test_tr11_throttled_call_logs_kind_model_size_and_seconds(fake_time, caplog):
+def test_throttled_call_logs_kind_model_size_and_seconds(fake_time, caplog):
     caplog.set_level("INFO", logger="localrag.nvidia")
     respx.post(EMBED_URL).mock(return_value=httpx.Response(200, json=embed_resp([[1.0], [2.0]])))
     nvidia.embed(cfg, ["a", "b"], "passage")
     assert _messages(caplog, "INFO") == [f"embed {cfg['embed_model']} x2: ok in 0.0s"]
 
 
+# req: feature/nemotron-3.5-parse/TR-11
 @respx.mock
-def test_tr11_retry_logs_status_body_attempt_and_wait(fake_time, caplog):
+def test_retry_logs_status_body_attempt_and_wait(fake_time, caplog):
     caplog.set_level("INFO", logger="localrag.nvidia")
     respx.post(EMBED_URL).mock(side_effect=[
         httpx.Response(429, headers={"Retry-After": "3"}, text="slow down"),
@@ -459,16 +478,18 @@ def test_tr11_retry_logs_status_body_attempt_and_wait(fake_time, caplog):
         f"embed {cfg['embed_model']} x1: HTTP 429 slow down, retry 1/10 in 3s"]
 
 
+# req: feature/nemotron-3.5-parse/TR-11
 @respx.mock
-def test_tr11_split_logs_batch_size_and_status(fake_time, caplog):
+def test_split_logs_batch_size_and_status(fake_time, caplog):
     caplog.set_level("INFO", logger="localrag.nvidia")
     respx.post(EMBED_URL).mock(side_effect=_echo_unless({4}))
     nvidia.embed(cfg, ["1", "2", "3", "4"], "passage")
     assert _messages(caplog, "WARNING") == [f"embed {cfg['embed_model']} x4: HTTP 500, splitting into 2 + 2"]
 
 
+# req: feature/nemotron-3.5-parse/TR-11
 @respx.mock
-def test_tr11_parse_and_rerank_calls_are_logged_too(fake_time, caplog):
+def test_parse_and_rerank_calls_are_logged_too(fake_time, caplog):
     caplog.set_level("INFO", logger="localrag.nvidia")
     respx.post(RERANK).mock(return_value=httpx.Response(200, json={"rankings": []}))
     respx.post(PARSE).mock(return_value=parse_resp("p"))
@@ -478,8 +499,9 @@ def test_tr11_parse_and_rerank_calls_are_logged_too(fake_time, caplog):
                                          f"parse {cfg['parse_model']}: ok in 0.0s"]
 
 
+# req: feature/nemotron-3.5-parse/TR-20
 @respx.mock
-def test_tr20_single_text_embed_retries_embed_attempts_times_with_capped_backoff(fake_time):
+def test_single_text_embed_retries_embed_attempts_times_with_capped_backoff(fake_time):
     _, sleeps = fake_time
     route = respx.post(EMBED_URL).mock(
         side_effect=[httpx.Response(500, json={})] * 9 + [httpx.Response(200, json=embed_resp([[1.0]]))])
@@ -488,16 +510,18 @@ def test_tr20_single_text_embed_retries_embed_attempts_times_with_capped_backoff
     assert sleeps == [1, 2, 4, 8, 8, 8, 8, 8, 8]
 
 
+# req: feature/nemotron-3.5-parse/TR-20
 @respx.mock
-def test_tr20_single_text_embed_gives_up_after_embed_attempts(fake_time):
+def test_single_text_embed_gives_up_after_embed_attempts(fake_time):
     route = respx.post(EMBED_URL).mock(return_value=httpx.Response(500, json={}))
     with pytest.raises(openai.APIStatusError):
         nvidia.embed(cfg10, ["a"], "passage")
     assert route.call_count == 10
 
 
+# req: feature/nemotron-3.5-parse/TR-20
 @respx.mock
-def test_tr20_other_calls_keep_five_attempts(fake_time):
+def test_other_calls_keep_five_attempts(fake_time):
     _, sleeps = fake_time
     route = respx.post(RERANK).mock(return_value=httpx.Response(503, json={}))
     with pytest.raises(httpx.HTTPStatusError):
@@ -506,8 +530,9 @@ def test_tr20_other_calls_keep_five_attempts(fake_time):
     assert sleeps == [1, 2, 4, 8]
 
 
+# req: feature/nemotron-3.5-parse/TR-20
 @respx.mock
-def test_tr20_retry_log_shows_the_real_total(fake_time, caplog):
+def test_retry_log_shows_the_real_total(fake_time, caplog):
     caplog.set_level("INFO", logger="localrag.nvidia")
     respx.post(EMBED_URL).mock(side_effect=[
         httpx.Response(500, text="boom"), httpx.Response(200, json=embed_resp([[1.0]]))])
@@ -515,16 +540,18 @@ def test_tr20_retry_log_shows_the_real_total(fake_time, caplog):
     assert any("retry 1/10 " in m for m in _messages(caplog, "WARNING"))
 
 
+# req: feature/nemotron-3.5-parse/TR-21
 @respx.mock
-def test_tr21_single_text_embed_uses_embed_attempts_from_config(fake_time):
+def test_single_text_embed_uses_embed_attempts_from_config(fake_time):
     route = respx.post(EMBED_URL).mock(return_value=httpx.Response(500, json={}))
     with pytest.raises(openai.APIStatusError):
         nvidia.embed({**cfg, "embed_attempts": 3}, ["a"], "passage")
     assert route.call_count == 3
 
 
+# req: feature/nemotron-3.5-parse/TR-21
 @respx.mock
-def test_tr21_single_text_embed_retries_up_to_fifty_by_default(fake_time):
+def test_single_text_embed_retries_up_to_fifty_by_default(fake_time):
     _, sleeps = fake_time
     route = respx.post(EMBED_URL).mock(
         side_effect=[httpx.Response(500, json={})] * 49 + [httpx.Response(200, json=embed_resp([[1.0]]))])
@@ -533,8 +560,9 @@ def test_tr21_single_text_embed_retries_up_to_fifty_by_default(fake_time):
     assert sleeps == [1, 2, 4] + [8] * 46
 
 
+# req: feature/nemotron-3.5-parse/TR-21
 @respx.mock
-def test_tr21_retry_log_shows_configured_total(fake_time, caplog):
+def test_retry_log_shows_configured_total(fake_time, caplog):
     caplog.set_level("INFO", logger="localrag.nvidia")
     respx.post(EMBED_URL).mock(side_effect=[
         httpx.Response(500, text="boom"), httpx.Response(200, json=embed_resp([[1.0]]))])

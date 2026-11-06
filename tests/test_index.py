@@ -107,7 +107,8 @@ def _index_records(caplog):
     return [(r.levelname, r.getMessage()) for r in caplog.records if r.name == "localrag.index"]
 
 
-def test_tr12_index_logs_start_and_result(conn, tmp_path, caplog):
+# req: feature/nemotron-3.5-parse/TR-12
+def test_index_logs_start_and_result(conn, tmp_path, caplog):
     caplog.set_level("INFO", logger="localrag.index")
     doc_id = _stored(conn, tmp_path, "hello")
     index.index_document(conn, {}, doc_id, embed=_zero_embed, parse_page=None)
@@ -115,7 +116,8 @@ def test_tr12_index_logs_start_and_result(conn, tmp_path, caplog):
                                       ("INFO", f"indexed {doc_id} a.txt: 1 pages, 0 via OCR")]
 
 
-def test_tr12_failed_index_logs_error_with_exception_message(conn, tmp_path, caplog):
+# req: feature/nemotron-3.5-parse/TR-12
+def test_failed_index_logs_error_with_exception_message(conn, tmp_path, caplog):
     doc_id = _stored(conn, tmp_path, "hello")
 
     def boom(cfg, texts, input_type):
@@ -128,7 +130,8 @@ def test_tr12_failed_index_logs_error_with_exception_message(conn, tmp_path, cap
     assert errors[0].exc_info[0] is RuntimeError
 
 
-def test_tr12_cancelled_index_logs_info_not_error(conn, tmp_path, caplog):
+# req: feature/nemotron-3.5-parse/TR-12
+def test_cancelled_index_logs_info_not_error(conn, tmp_path, caplog):
     caplog.set_level("INFO", logger="localrag.index")
     doc_id = _stored(conn, tmp_path, "hello")
 
@@ -231,7 +234,8 @@ def test_index_sets_total_pages_before_parsing(conn, tmp_path):
     assert seen == [2]
 
 
-def test_tr15_failed_index_stores_server_message_from_response_body(conn, tmp_path):
+# req: feature/nemotron-3.5-parse/TR-15
+def test_failed_index_stores_server_message_from_response_body(conn, tmp_path):
     import httpx
     doc_id = _pdf_doc(conn, tmp_path, [None])
 
@@ -245,7 +249,8 @@ def test_tr15_failed_index_stores_server_message_from_response_body(conn, tmp_pa
     assert error.startswith("Server error '500' for url - ") and "service inference failed" in error
 
 
-def test_tr15_failed_index_without_response_keeps_exception_text(conn, tmp_path):
+# req: feature/nemotron-3.5-parse/TR-15
+def test_failed_index_without_response_keeps_exception_text(conn, tmp_path):
     doc_id = _pdf_doc(conn, tmp_path, [None])
 
     def failing_parse(cfg, png):
@@ -256,7 +261,8 @@ def test_tr15_failed_index_without_response_keeps_exception_text(conn, tmp_path)
     assert db.get_document(conn, doc_id)["error"] == "boom"
 
 
-def test_tr16_openai_error_text_is_not_duplicated(conn, tmp_path):
+# req: feature/nemotron-3.5-parse/TR-16
+def test_openai_error_text_is_not_duplicated(conn, tmp_path):
     import httpx
     import openai
     doc_id = _pdf_doc(conn, tmp_path, ["Hello text page with enough chars"])

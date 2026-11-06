@@ -49,7 +49,9 @@ class FakeWebview:
 @pytest.fixture(autouse=True)
 def no_configure_logging(request, monkeypatch):
     # the real one sets the httpx logger to WARNING for the rest of the session
-    if not request.node.name.startswith("test_tr13"):
+    if request.node.name not in {"test_configure_logging_installs_stderr_handler_at_info",
+                                 "test_configure_logging_skips_when_stderr_is_none",
+                                 "test_main_configures_logging"}:
         monkeypatch.setattr(app, "configure_logging", lambda: None)
 
 
@@ -60,7 +62,8 @@ def run_main(ready, argv=None):
     return code, server, wv
 
 
-def test_tr13_configure_logging_installs_stderr_handler_at_info(monkeypatch):
+# req: feature/nemotron-3.5-parse/TR-13
+def test_configure_logging_installs_stderr_handler_at_info(monkeypatch):
     import logging
     import sys
     calls = []
@@ -72,7 +75,8 @@ def test_tr13_configure_logging_installs_stderr_handler_at_info(monkeypatch):
     assert logging.getLogger("httpx").level == logging.WARNING
 
 
-def test_tr13_configure_logging_skips_when_stderr_is_none(monkeypatch):
+# req: feature/nemotron-3.5-parse/TR-13
+def test_configure_logging_skips_when_stderr_is_none(monkeypatch):
     import logging
     import sys
     calls = []
@@ -83,7 +87,8 @@ def test_tr13_configure_logging_skips_when_stderr_is_none(monkeypatch):
     assert calls == [] and logging.getLogger("httpx").level == logging.NOTSET
 
 
-def test_tr13_main_configures_logging(monkeypatch):
+# req: feature/nemotron-3.5-parse/TR-13
+def test_main_configures_logging(monkeypatch):
     calls = []
     monkeypatch.setattr(app, "configure_logging", lambda: calls.append(1))
     run_main(True)

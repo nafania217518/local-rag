@@ -42,6 +42,7 @@ def test_windows_dockerfile_builds_the_spec_one_file_exe():
         "tobix/pywine:3.12", "pyinstaller localrag.spec", "FROM scratch", "/src/dist/LocalRAG.exe"))
 
 
-def test_tr1_dockerfile_wine_steps_fail_on_error():
+# req: chore/windows-build-script/TR-1
+def test_dockerfile_wine_steps_fail_on_error():
     wine_runs = [l for l in DOCKERFILE.splitlines() if l.startswith("RUN") and "wine " in l]
     assert wine_runs and all("; rc=$?; wineserver -w; exit $rc'" in l for l in wine_runs)

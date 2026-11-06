@@ -66,12 +66,14 @@ def test_default_chat_model_is_nemotron_super_vl():
     assert config.DEFAULTS["chat_model"] == "nvidia/nemotron-3.5-super-vl-120b-a12b"
 
 
-def test_tr1_default_parse_model_is_nemotron_3_5_parse():
+# req: feature/nemotron-3.5-parse/TR-1
+def test_default_parse_model_is_nemotron_3_5_parse():
     from localrag import config
     assert config.DEFAULTS["parse_model"] == "nvidia/nemotron-3.5-parse"
 
 
-def test_tr21_default_embed_attempts_is_50():
+# req: feature/nemotron-3.5-parse/TR-21
+def test_default_embed_attempts_is_50():
     assert DEFAULTS["embed_attempts"] == 50 and type(DEFAULTS["embed_attempts"]) is int
 
 
@@ -92,15 +94,17 @@ def test_defaults_cover_every_tunable():
     assert "[n]" in DEFAULTS["system_prompt"]
 
 
+# req: feature/nemotron-3.5-parse/TR-6
 @pytest.mark.parametrize("retired", ["nvidia/nemotron-parse", "nvidia/nemotron-parse-2.0"])
-def test_tr6_load_config_replaces_retired_parse_model(retired, tmp_path):
+def test_load_config_replaces_retired_parse_model(retired, tmp_path):
     from localrag.config import load_config, save_config
     path = tmp_path / "config.json"
     save_config({"parse_model": retired}, path)
     assert load_config(path)["parse_model"] == DEFAULTS["parse_model"]
 
 
-def test_tr6_load_config_keeps_other_saved_parse_model(tmp_path):
+# req: feature/nemotron-3.5-parse/TR-6
+def test_load_config_keeps_other_saved_parse_model(tmp_path):
     from localrag.config import load_config, save_config
     path = tmp_path / "config.json"
     save_config({"parse_model": "my/parse"}, path)

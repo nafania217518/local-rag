@@ -54,49 +54,58 @@ def _build(repo, log, exe=False, run_out="", rc=0):
                           capture_output=True, text=True, env=env)
 
 
-def test_tr2_build_script_fails_on_rosetta_error(repo):
+# req: chore/windows-build-script/TR-2
+def test_build_script_fails_on_rosetta_error(repo):
     r = _build(repo, "rosetta error: invalid gdt selector index 5\n", exe=True)
     assert r.returncode == 1 and "BUILD_FAIL rosetta" in r.stdout
 
 
-def test_tr2_build_script_fails_when_pip_did_not_finish(repo):
+# req: chore/windows-build-script/TR-2
+def test_build_script_fails_when_pip_did_not_finish(repo):
     r = _build(repo, "Collecting x\n", exe=True)
     assert r.returncode == 1 and "pip did not finish" in r.stdout
 
 
-def test_tr2_build_script_fails_on_missing_hidden_import(repo):
+# req: chore/windows-build-script/TR-2
+def test_build_script_fails_on_missing_hidden_import(repo):
     r = _build(repo, "Successfully installed x\n11961 ERROR: Hidden import 'webview' not found\n", exe=True)
     assert r.returncode == 1 and "Hidden import" in r.stdout
 
 
-def test_tr2_build_script_fails_when_smoke_fails(repo):
+# req: chore/windows-build-script/TR-2
+def test_build_script_fails_when_smoke_fails(repo):
     r = _build(repo, GOOD_LOG, exe=True, run_out="SMOKE_FAIL")
     assert r.returncode == 1 and "SMOKE_FAIL" in r.stdout
     assert not (repo / "dist" / "LocalRAG-windows-x64.zip").exists()
 
 
-def test_tr2_build_script_zips_the_exe_after_smoke_ok(repo):
+# req: chore/windows-build-script/TR-2
+def test_build_script_zips_the_exe_after_smoke_ok(repo):
     r = _build(repo, GOOD_LOG, exe=True, run_out="SMOKE_OK")
     assert r.returncode == 0 and "BUILD_OK" in r.stdout, r.stdout + r.stderr
     assert zipfile.ZipFile(repo / "dist" / "LocalRAG-windows-x64.zip").namelist() == ["LocalRAG.exe"]
 
 
-def test_tr3_build_script_passes_no_cache_to_docker_build(repo):
+# req: chore/windows-build-script/TR-3
+def test_build_script_passes_no_cache_to_docker_build(repo):
     _build(repo, GOOD_LOG, exe=True, run_out="SMOKE_OK")
     assert "--no-cache" in (repo / "build-args").read_text().split()
 
 
-def test_tr3_build_script_reports_docker_build_exit_status(repo):
+# req: chore/windows-build-script/TR-3
+def test_build_script_reports_docker_build_exit_status(repo):
     r = _build(repo, GOOD_LOG, exe=True, run_out="SMOKE_OK", rc=7)
     assert r.returncode == 1 and "docker build exited 7" in r.stdout
 
 
-def test_tr3_build_script_fails_when_exe_is_missing(repo):
+# req: chore/windows-build-script/TR-3
+def test_build_script_fails_when_exe_is_missing(repo):
     r = _build(repo, GOOD_LOG, run_out="SMOKE_OK")
     assert r.returncode == 1 and "LocalRAG.exe is missing" in r.stdout
 
 
-def test_tr3_build_script_removes_a_stale_zip_before_building(repo):
+# req: chore/windows-build-script/TR-3
+def test_build_script_removes_a_stale_zip_before_building(repo):
     (repo / "dist").mkdir()
     (repo / "dist" / "LocalRAG-windows-x64.zip").write_text("junk")
     r = _build(repo, "rosetta error: invalid gdt selector index 5\n", exe=True)
@@ -117,11 +126,13 @@ def _smoke(tmp_path, curl_rc, tries=None):
                           capture_output=True, text=True, env=env)
 
 
-def test_tr2_smoke_script_polls_health_and_reports(tmp_path):
+# req: chore/windows-build-script/TR-2
+def test_smoke_script_polls_health_and_reports(tmp_path):
     r = _smoke(tmp_path, 0)
     assert r.returncode == 0 and '{"ok":true}' in r.stdout and "SMOKE_OK" in r.stdout
 
 
-def test_tr2_smoke_script_reports_fail_when_health_never_answers(tmp_path):
+# req: chore/windows-build-script/TR-2
+def test_smoke_script_reports_fail_when_health_never_answers(tmp_path):
     r = _smoke(tmp_path, 1, tries="1")
     assert r.returncode == 1 and "SMOKE_FAIL" in r.stdout
