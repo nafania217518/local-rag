@@ -44,14 +44,15 @@ class Expansion:
 def expand(cfg, question, chat_stream=nvidia.chat_stream) -> Expansion:
     if not cfg["paraphrase"]:
         return Expansion()
-    prompt = EXPAND_PROMPT.format(n=cfg["paraphrases"], groups=cfg["keyword_groups"],
+    n = max(cfg["paraphrases"], 0)
+    prompt = EXPAND_PROMPT.format(n=n, groups=cfg["keyword_groups"],
                                   synonyms=cfg["keyword_synonyms"], question=question)
     try:
         reply = "".join(t for kind, t in chat_stream(cfg, [{"role": "user", "content": prompt}], "none")
                         if kind == "token")
     except Exception:
         return Expansion()  # the answer runs on the original question alone
-    return _parse_expansion(reply, question, cfg["paraphrases"], cfg["keyword_groups"])
+    return _parse_expansion(reply, question, n, cfg["keyword_groups"])
 
 
 def _parse_expansion(reply, question, n, groups) -> Expansion:

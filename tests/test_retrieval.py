@@ -298,6 +298,16 @@ def test_retrieve_reranks_with_original_question(env, cfg):
     assert queries == ["q"]
 
 
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-13
+@pytest.mark.parametrize("paraphrases", [0, -1])
+def test_expand_with_paraphrases_below_one_gives_keywords_only(cfg, paraphrases):
+    cfg.update(paraphrase=True, paraphrases=paraphrases)
+    calls = []
+    out = expand(cfg, "q", fake_chat("PHRASING: p1\nPHRASING: p2\nKEYWORDS: weld; pipe", calls))
+    assert out == Expansion((), ("weld", "pipe"))
+    assert "- 0 lines PHRASING" in calls[0][1][0]["content"]
+
+
 # req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
 def test_expand_reads_phrasings_and_keyword_terms_from_labelled_lines(cfg):
     cfg.update(paraphrase=True, paraphrases=2)
