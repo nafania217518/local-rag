@@ -358,8 +358,8 @@ def test_expand_drops_lines_before_the_first_label(cfg):
 # req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-16
 def test_expand_reads_unlabelled_lines_under_a_phrasing_label(cfg):
     cfg.update(paraphrase=True, paraphrases=10)
-    reply = "INTENT: i\nPHRASING: p1\np2\n- p3\n2. \"p4\"\nKEYWORDS: weld"
-    assert expand(cfg, "q", fake_chat(reply)).paraphrases == ("p1", "p2", "p3", "p4")
+    reply = "INTENT: i\nPHRASING: p1\np2\n- p3\n2. \"p4\"\n**p5**\nKEYWORDS: weld"
+    assert expand(cfg, "q", fake_chat(reply)).paraphrases == ("p1", "p2", "p3", "p4", "p5")
 
 
 # req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-16
