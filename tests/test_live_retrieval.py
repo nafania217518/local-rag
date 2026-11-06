@@ -67,7 +67,7 @@ def eval_workspace(conn):
     return workspaces.pop()
 
 
-# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-10, 10-keyword-and-synonym-expansion-for-keyword-search/TR-12, 10-keyword-and-synonym-expansion-for-keyword-search/TR-14
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-10, 10-keyword-and-synonym-expansion-for-keyword-search/TR-12, 10-keyword-and-synonym-expansion-for-keyword-search/TR-14, 10-keyword-and-synonym-expansion-for-keyword-search/TR-16
 def test_live_keyword_ranking_does_not_lower_the_fused_hit_rate(tmp_path):
     conn = copy_eval_db(tmp_path)
     cfg = {**config.DEFAULTS, "api_key": os.environ["NVIDIA_API_KEY"]}
@@ -75,12 +75,14 @@ def test_live_keyword_ranking_does_not_lower_the_fused_hit_rate(tmp_path):
     fused_hits = {"without": [], "with": []}
     source_hits = {"without": [], "with": []}
     with_keywords_count = 0
+    all_phrasings_count = 0
     fused_ranks = {"without": [], "with": []}
     alone_ranks = {"question": [], "keywords": []}
     for number, entry in enumerate(QUESTIONS, 1):
         question = entry["question"]
         expansion = retrieval.expand(cfg, question)
         with_keywords_count += bool(expansion.keywords)
+        all_phrasings_count += len(expansion.paraphrases) == cfg["paraphrases"]
         rankings = retrieval.search_rankings(conn, cfg, ws, [question, *expansion.paraphrases], nvidia.embed)
         without = retrieval.fuse(cfg, rankings)
         keyword_terms = retrieval.keyword_ranking(conn, cfg, ws, expansion.keywords)
@@ -102,6 +104,7 @@ def test_live_keyword_ranking_does_not_lower_the_fused_hit_rate(tmp_path):
     report(f"fused top {cfg['rerank_candidates']}", fused_hits["without"], fused_hits["with"])
     report(f"top {cfg['sources']} after rerank", source_hits["without"], source_hits["with"])
     print(f"questions with keywords: {with_keywords_count}/{len(QUESTIONS)}")
+    print(f"questions with all phrasings: {all_phrasings_count}/{len(QUESTIONS)}")
     better, worse = rank_shifts(fused_ranks["without"], fused_ranks["with"])
     print(f"fused MRR: without {mean_reciprocal_rank(fused_ranks['without']):.3f}, "
           f"with {mean_reciprocal_rank(fused_ranks['with']):.3f}, first hit better {better}, worse {worse}")
