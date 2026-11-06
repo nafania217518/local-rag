@@ -147,23 +147,35 @@ Cost per question: still one chat request for the expansion, one embed, one rera
 - The live test `tests/test_live_retrieval.py` runs on a backup copy of the app database with `config.DEFAULTS`. It makes one expansion per question and fuses the same rankings with and without the keyword ranking. A hit is an expected (document, page) in the list.
 - Command: `LOCALRAG_EVAL_DB="$HOME/Library/Application Support/LocalRAG/localrag.db" uv run pytest -m live tests/test_live_retrieval.py --no-cov -s`, with `NVIDIA_API_KEY` set. About 120 requests, about 4 minutes.
 
-| Measure | Without keywords | With keywords |
+Two runs on the same day. The chat model writes other paraphrases and keywords in each run, so the baseline moves too.
+
+| Measure | Run 1 without | Run 1 with | Run 2 without | Run 2 with |
+|---|---|---|---|---|
+| Fused top 20 hit rate | 30/30 | 30/30 | 30/30 | 30/30 |
+| Top 6 after rerank | 30/30 | 30/30 | 30/30 | 30/30 |
+| Fused mean reciprocal rank | 0.760 | 0.761 | 0.795 | 0.740 |
+| First hit better / worse with keywords | | 1 / 2 | | 0 / 4 |
+
+Keyword-search rankings alone, top 30:
+
+| Ranking | Run 1 | Run 2 |
 |---|---|---|
-| Fused top 20 hit rate | 30/30 | 30/30 |
-| Top 6 after rerank | 30/30 | 30/30 |
-| Fused mean reciprocal rank | 0.760 | 0.761 |
+| Question ranking, hits (mean reciprocal rank) | 14/30 (0.194) | 14/30 (0.194) |
+| Keyword-term ranking, hits (mean reciprocal rank) | 6/30 (0.152) | 5/30 (0.103) |
+| Keyword-term ranking per language: uk, ru, en | 4/12, 1/9, 1/9 | 3/12, 1/9, 1/9 |
+| Questions hit only by the keyword-term ranking | 1 | 1 |
+| Questions hit only by the question ranking | 9 | 10 |
 
-The first hit is better for 1 question and worse for 2.
+The model returned keywords for 30 of 30 questions in both runs.
 
-Keyword-search rankings alone, top 30: the question ranking hits 14/30 (mean reciprocal rank 0.194); the keyword-term ranking hits 6/30 (0.152). One question is hit only by the keyword-term ranking; nine only by the question ranking. Keyword-term ranking per language: uk 4/12, ru 1/9, en 1/9. The model returned keywords for 30 of 30 questions.
-
-Conclusion: the keyword ranking does no harm and gives no measurable gain on this corpus. The fused rankings without keywords already put every answer page into the top 20. The keyword-term ranking is weaker than the question ranking. The likely causes, not tested: keywords match exact tokens while the text holds inflected forms, and Russian and English keywords do not match Ukrainian text. Word forms are the next step: issue "Match Ukrainian and Russian word forms in keyword search" (https://github.com/nafania217518/local-rag/issues/11).
+Conclusion: the keyword ranking gives no measurable gain on this corpus. It does not change which pages reach the top 20 or the top 6 after rerank. In run 2 it moved the first hit down in the fused list for 4 questions and up for none; in run 1 the order was about equal. The fused order decides the sources only when `rerank` is off, and that case was not measured. The fused rankings without keywords already put every answer page into the top 20. The keyword-term ranking is weaker than the question ranking. The likely causes, not tested: keywords match exact tokens while the text holds inflected forms, and Russian and English keywords do not match Ukrainian text. Word forms are the next step: issue "Match Ukrainian and Russian word forms in keyword search" (https://github.com/nafania217518/local-rag/issues/11).
 
 Limits of the measurement:
 - 30 questions, so one question is 3.3 percentage points.
+- Two runs differ by 0.035 in the baseline mean reciprocal rank, so a difference of that size between the variants is noise.
 - Chunks never span two pages, so an answer that runs across a page break is split between two pages; the strict page check can count it as a miss (both variants share the check).
 - The result holds only while the default embed model is the one that indexed the database.
-- The test takes the workspace of the first question's document.
+- The test stops before any API request when a document of the question set is missing or the documents sit in more than one workspace.
 
 ### 4.4 Chat (`chat.py`)
 
