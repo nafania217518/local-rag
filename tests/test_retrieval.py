@@ -292,3 +292,62 @@ def test_retrieve_reranks_with_original_question(env, cfg):
         return [(i, 1.0) for i in range(len(passages))]
     retrieve(conn, cfg, ws, "q", embed=fake_embed(E1), rerank=rerank, chat_stream=fake_chat("p1"))
     assert queries == ["q"]
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
+def test_expand_reads_phrasings_and_keyword_terms_from_labelled_lines(cfg):
+    cfg.update(paraphrase=True, paraphrases=2)
+    reply = "INTENT: welding rules\nPHRASING: p1\nPHRASING: p2\nKEYWORDS: зварювання; weld\nKEYWORDS: труба; pipe"
+    assert expand(cfg, "q", fake_chat(reply)) == Expansion(("p1", "p2"), ("зварювання", "weld", "труба", "pipe"))
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
+def test_expand_drops_the_intent_line(cfg):
+    cfg.update(paraphrase=True)
+    out = expand(cfg, "q", fake_chat("INTENT: secret intent\nPHRASING: p1\nKEYWORDS: weld"))
+    assert out == Expansion(("p1",), ("weld",))
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
+def test_expand_splits_a_keyword_group_on_semicolons_and_drops_blank_terms(cfg):
+    cfg.update(paraphrase=True)
+    assert expand(cfg, "q", fake_chat("KEYWORDS: weld; ; seam ;;joint;")).keywords == ("weld", "seam", "joint")
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
+def test_expand_dedupes_keyword_terms_across_groups_ignoring_case(cfg):
+    cfg.update(paraphrase=True)
+    reply = "KEYWORDS: Weld; seam\nKEYWORDS: weld; pipe; SEAM"
+    assert expand(cfg, "q", fake_chat(reply)).keywords == ("Weld", "seam", "pipe")
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
+def test_expand_caps_keyword_groups_at_keyword_groups(cfg):
+    cfg.update(paraphrase=True, keyword_groups=2)
+    reply = "KEYWORDS: a; b\nKEYWORDS: c\nKEYWORDS: d"
+    assert expand(cfg, "q", fake_chat(reply)).keywords == ("a", "b", "c")
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
+def test_expand_accepts_lowercase_labels_bullets_and_bold(cfg):
+    cfg.update(paraphrase=True, paraphrases=3)
+    reply = "- phrasing: p1\n2. **PHRASING:** p2\n**Phrasing**: p3\n* **keywords:** weld; seam"
+    assert expand(cfg, "q", fake_chat(reply)) == Expansion(("p1", "p2", "p3"), ("weld", "seam"))
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
+def test_expand_ignores_unlabelled_lines(cfg):
+    cfg.update(paraphrase=True)
+    assert expand(cfg, "q", fake_chat("Here you go:\np1\nweld; seam\nPHRASING: p2")) == Expansion(("p2",))
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
+def test_expand_without_keyword_lines_keeps_the_phrasings(cfg):
+    cfg.update(paraphrase=True, paraphrases=2)
+    assert expand(cfg, "q", fake_chat("INTENT: i\nPHRASING: p1\nPHRASING: p2")) == Expansion(("p1", "p2"))
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-5
+def test_expand_without_phrasing_lines_keeps_the_keywords(cfg):
+    cfg.update(paraphrase=True)
+    assert expand(cfg, "q", fake_chat("INTENT: i\nKEYWORDS: weld; seam")) == Expansion((), ("weld", "seam"))
