@@ -98,4 +98,4 @@ uv run pyinstaller localrag.spec --noconfirm
 
 Releases are built with `scripts/build-windows.sh` (or the Windows commands above). The zip is attached to a GitHub release. CI only runs the test suite on pull requests.
 
-See [DESIGN.md](DESIGN.md) for the design and the known caveats.
+See [DESIGN.md](docs/DESIGN.md) for the design and the known caveats.
