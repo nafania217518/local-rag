@@ -478,3 +478,12 @@ def test_keyword_eval_set_has_about_30_questions_in_three_languages():
     assert all(langs[lang] >= 8 for lang in ("uk", "ru", "en"))
     assert all(set(e) == {"lang", "question", "document", "pages"} and e["question"] and e["document"]
                and e["pages"] and all(isinstance(p, int) for p in e["pages"]) for e in entries)
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-17
+def test_expand_keeps_a_leading_decimal_on_a_plain_line(cfg):
+    cfg.update(paraphrase=True, paraphrases=10, keyword_groups=3)
+    reply = ("PHRASING: p1\n1.5-кратний тиск: скільки тримати?\n1. PHRASING: 2.5-кратний тиск\n"
+             "KEYWORDS: steel\n1.4301; AISI 304")
+    assert expand(cfg, "q", fake_chat(reply)) == Expansion(
+        ("p1", "1.5-кратний тиск: скільки тримати?", "2.5-кратний тиск"), ("steel", "1.4301", "AISI 304"))

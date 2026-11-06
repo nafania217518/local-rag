@@ -34,7 +34,7 @@ EXPAND_PROMPT = (
 
 _LABELLED = re.compile(r"^\s*(?:[-*•]|\d+[.)])?\s*\**\s*(INTENT|PHRASING|KEYWORDS)\s*\**\s*:\s*\**(.*?)\**\s*$",
                        re.IGNORECASE)
-_UNLABELLED = re.compile(r"^\s*(?:[-*•]\s|\d+[.)])?\s*(.*?)\s*$")
+_UNLABELLED = re.compile(r"^\s*(?:(?:[-*•]|\d+[.)])\s)?\s*(.*?)\s*$")
 
 
 @dataclass(frozen=True)
