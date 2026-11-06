@@ -74,9 +74,9 @@ def test_live_parse_reads_ukrainian_scanned_page():
     assert parsers.text_quality(ocr) >= config.DEFAULTS["ocr_quality_min"]
 
 
-def expand_live(question):
+def expand_live(question, **overrides):
     from localrag import retrieval
-    cfg = {**config.DEFAULTS, "api_key": os.environ["NVIDIA_API_KEY"], "paraphrase": True}
+    cfg = {**config.DEFAULTS, "api_key": os.environ["NVIDIA_API_KEY"], "paraphrase": True, **overrides}
     tokens = []
     def recording_chat(cfg, messages, effort=None):
         for kind, text in nvidia.chat_stream(cfg, messages, effort):
@@ -111,3 +111,13 @@ def test_live_expansion_of_an_english_question_has_english_keywords_only():
     reply, expansion = expand_live("How to weld steel pipelines?")
     assert expansion.keywords, reply
     assert not any(re.search(r"[Ѐ-ӿ]", t) for t in expansion.keywords), reply
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-16
+@pytest.mark.parametrize("question", ["До якого морозу на вулиці можна варити нержавійку без підігріву?",
+                                      "How long must equipment sit at full test pressure during a water pressure test?"])
+def test_live_expansion_keeps_ten_phrasings(question):
+    reply, expansion = expand_live(question, paraphrases=10)
+    line_starts = [line[:12] for line in reply.splitlines()]
+    assert len(expansion.paraphrases) >= 8, line_starts
+    assert expansion.keywords, line_starts
