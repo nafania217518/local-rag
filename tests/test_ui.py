@@ -125,6 +125,24 @@ def test_settings_saves_paraphrase_toggle_and_count(page, server):
     assert got["paraphrase"] is False and got["paraphrases"] == 3 and type(got["paraphrases"]) is int
 
 
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-3
+def test_settings_saves_keyword_limits(page, server):
+    page.goto(server)
+    page.click("#settings-btn")
+    expect(page.locator("#settings")).to_be_visible()
+    retrieval = page.locator("#settings fieldset", has=page.locator("legend", has_text="Retrieval"))
+    groups, synonyms = retrieval.locator('[name="keyword_groups"]'), retrieval.locator('[name="keyword_synonyms"]')
+    assert (groups.get_attribute("min"), groups.get_attribute("max")) == ("1", "10")
+    assert (synonyms.get_attribute("min"), synonyms.get_attribute("max")) == ("0", "10")
+    groups.fill("6")
+    synonyms.fill("0")
+    page.click("#settings-save")
+    expect(page.locator("#settings")).not_to_be_visible()
+    got = httpx.get(f"{server}/settings").json()
+    assert (got["keyword_groups"], got["keyword_synonyms"]) == (6, 0)
+    assert type(got["keyword_groups"]) is int and type(got["keyword_synonyms"]) is int
+
+
 def test_tr23_settings_saves_ten_paraphrases(page, server):
     page.goto(server)
     page.click("#settings-btn")

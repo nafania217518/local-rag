@@ -123,3 +123,57 @@ def test_delete_chunks_removes_fts_and_vec_rows(tmp_path):
     assert conn.execute("SELECT count(*) FROM chunks_fts WHERE chunks_fts MATCH ?", ["uniqueword"]).fetchone()[0] == 0
     assert conn.execute("SELECT count(*) FROM chunks_vec").fetchone()[0] == 0
     assert db.get_document(conn, d) is not None
+
+
+def _terms_env(tmp_path, texts):
+    from localrag import db
+    conn = connect(tmp_path / "t.db", embed_dim=4)
+    ws = db.create_workspace(conn, "w")
+    d = db.create_document(conn, ws, "a", "p")
+    ids = db.add_chunks(conn, d, ws, [(i, 1, t, [1, 0, 0, 0]) for i, t in enumerate(texts)])
+    return conn, ws, ids
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-1
+def test_fts_search_terms_matches_a_multi_word_term_only_as_a_phrase(tmp_path):
+    from localrag import db
+    conn, ws, ids = _terms_env(tmp_path, ["pipe welding rules", "welding of a pipe"])
+    assert [i for i, _ in db.fts_search_terms(conn, ws, ["pipe welding"], 10)] == [ids[0]]
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-1
+def test_fts_search_terms_ranks_a_chunk_with_more_terms_first(tmp_path):
+    from localrag import db
+    conn, ws, ids = _terms_env(tmp_path, ["weld only here and filler text", "weld and seam together"])
+    assert [i for i, _ in db.fts_search_terms(conn, ws, ["weld", "seam"], 10)] == [ids[1], ids[0]]
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-1
+def test_fts_search_terms_does_not_match_another_word_form(tmp_path):
+    from localrag import db
+    conn, ws, ids = _terms_env(tmp_path, ["трубопроводів багато"])
+    assert db.fts_search_terms(conn, ws, ["трубопровід"], 10) == []
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-1
+def test_fts_search_terms_escapes_double_quotes_in_a_term(tmp_path):
+    from localrag import db
+    conn, ws, ids = _terms_env(tmp_path, ["the weld seam"])
+    assert [i for i, _ in db.fts_search_terms(conn, ws, ['weld" seam'], 10)] == [ids[0]]
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-1
+def test_fts_search_terms_with_no_terms_returns_empty(tmp_path):
+    from localrag import db
+    conn, ws, ids = _terms_env(tmp_path, ["text"])
+    assert db.fts_search_terms(conn, ws, [], 10) == []
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-1
+def test_fts_search_terms_returns_only_chunks_of_the_workspace(tmp_path):
+    from localrag import db
+    conn, ws, ids = _terms_env(tmp_path, ["weld"])
+    other = db.create_workspace(conn, "o")
+    d = db.create_document(conn, other, "b", "q")
+    db.add_chunks(conn, d, other, [(0, 1, "weld", [1, 0, 0, 0])])
+    assert [i for i, _ in db.fts_search_terms(conn, ws, ["weld"], 10)] == ids

@@ -14,6 +14,8 @@ DEFAULTS = {
     "rerank": True,
     "paraphrase": True,
     "paraphrases": 2,
+    "keyword_groups": 4,
+    "keyword_synonyms": 3,
     "reasoning_effort": "none",
     "base_url": "https://integrate.api.nvidia.com/v1",
     "rerank_url": "https://ai.api.nvidia.com/v1/retrieval/{model}/reranking",

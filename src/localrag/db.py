@@ -151,7 +151,11 @@ def get_chunks(conn, ids):
 
 
 def fts_search(conn, workspace_id, query, k):
-    expr = " OR ".join('"' + t.replace('"', '""') + '"' for t in query.split())
+    return fts_search_terms(conn, workspace_id, query.split(), k)
+
+
+def fts_search_terms(conn, workspace_id, terms, k):
+    expr = " OR ".join('"' + t.replace('"', '""') + '"' for t in terms)
     if not expr:
         return []
     rows = conn.execute(
