@@ -1,0 +1,243 @@
+[
+  {
+    "lang": "uk",
+    "question": "Який найменший нахил мають мати горизонтальні труби, щоб вода стікала до дренажу?",
+    "document": "СОУ_НАЕК_158_2025_zabezpecennia_texnicnoyi_bezpeki_texnicni_vimogi.pdf",
+    "pages": [
+      29
+    ]
+  },
+  {
+    "lang": "uk",
+    "question": "З якого віку людину можна допустити до обслуговування обладнання й трубопроводів станції?",
+    "document": "СОУ_НАЕК_158_2025_zabezpecennia_texnicnoyi_bezpeki_texnicni_vimogi.pdf",
+    "pages": [
+      16
+    ]
+  },
+  {
+    "lang": "uk",
+    "question": "Скільки засувок треба поставити, щоб відгородити трубопровід низького тиску від лінії на 2,2 МПа і вище?",
+    "document": "СОУ_НАЕК_158_2025_zabezpecennia_texnicnoyi_bezpeki_texnicni_vimogi.pdf",
+    "pages": [
+      59
+    ]
+  },
+  {
+    "lang": "uk",
+    "question": "Хто може дозволити вимкнути явно несправний захист на обладнанні, що працює?",
+    "document": "СОУ_НАЕК_158_2025_zabezpecennia_texnicnoyi_bezpeki_texnicni_vimogi.pdf",
+    "pages": [
+      73
+    ]
+  },
+  {
+    "lang": "ru",
+    "question": "Нужно ли делать теплоизоляцию съёмной там, где на оборудовании висят заводские таблички?",
+    "document": "СОУ_НАЕК_158_2025_zabezpecennia_texnicnoyi_bezpeki_texnicni_vimogi.pdf",
+    "pages": [
+      21
+    ]
+  },
+  {
+    "lang": "ru",
+    "question": "Какой минимальный угол должен быть у меньшего куска трубы, сваренной из двух частей?",
+    "document": "СОУ_НАЕК_158_2025_zabezpecennia_texnicnoyi_bezpeki_texnicni_vimogi.pdf",
+    "pages": [
+      30
+    ]
+  },
+  {
+    "lang": "ru",
+    "question": "Когда при монтаже трубопровода можно делать его предварительную растяжку?",
+    "document": "СОУ_НАЕК_158_2025_zabezpecennia_texnicnoyi_bezpeki_texnicni_vimogi.pdf",
+    "pages": [
+      44
+    ]
+  },
+  {
+    "lang": "en",
+    "question": "How long must equipment sit at full test pressure during a water pressure test?",
+    "document": "СОУ_НАЕК_158_2025_zabezpecennia_texnicnoyi_bezpeki_texnicni_vimogi.pdf",
+    "pages": [
+      54
+    ]
+  },
+  {
+    "lang": "en",
+    "question": "How many years of experience must the specialists of a hired expert organization have?",
+    "document": "СОУ_НАЕК_158_2025_zabezpecennia_texnicnoyi_bezpeki_texnicni_vimogi.pdf",
+    "pages": [
+      15
+    ]
+  },
+  {
+    "lang": "en",
+    "question": "How often do the operating instructions for plant equipment have to be reviewed?",
+    "document": "СОУ_НАЕК_158_2025_zabezpecennia_texnicnoyi_bezpeki_texnicni_vimogi.pdf",
+    "pages": [
+      73
+    ]
+  },
+  {
+    "lang": "uk",
+    "question": "Як часто треба записувати температуру й вологість у приміщенні, де зберігаються прожарені електроди?",
+    "document": "СОУ_НАЕК_159_2025_zabezpecennia_texnicnoyi_bezpeki_zvariuvannia.pdf",
+    "pages": [
+      15
+    ]
+  },
+  {
+    "lang": "uk",
+    "question": "До якого морозу на вулиці можна варити нержавійку без підігріву?",
+    "document": "СОУ_НАЕК_159_2025_zabezpecennia_texnicnoyi_bezpeki_zvariuvannia.pdf",
+    "pages": [
+      44
+    ]
+  },
+  {
+    "lang": "uk",
+    "question": "Скільки днів може пройти між наплавленням крайок і термообробкою для сталей групи 6.2?",
+    "document": "СОУ_НАЕК_159_2025_zabezpecennia_texnicnoyi_bezpeki_zvariuvannia.pdf",
+    "pages": [
+      59
+    ]
+  },
+  {
+    "lang": "uk",
+    "question": "Які дані треба записати, щоб потім знати, хто саме варив конкретний шов?",
+    "document": "СОУ_НАЕК_159_2025_zabezpecennia_texnicnoyi_bezpeki_zvariuvannia.pdf",
+    "pages": [
+      70
+    ]
+  },
+  {
+    "lang": "ru",
+    "question": "Можно ли ставить прихватки в месте, где пересекаются два будущих шва?",
+    "document": "СОУ_НАЕК_159_2025_zabezpecennia_texnicnoyi_bezpeki_zvariuvannia.pdf",
+    "pages": [
+      39
+    ]
+  },
+  {
+    "lang": "ru",
+    "question": "Сколько углекислого газа можно подмешивать к аргону, чтобы сварка всё ещё считалась аргонодуговой?",
+    "document": "СОУ_НАЕК_159_2025_zabezpecennia_texnicnoyi_bezpeki_zvariuvannia.pdf",
+    "pages": [
+      43
+    ]
+  },
+  {
+    "lang": "ru",
+    "question": "Чем протирать вырубленное место дефекта перед тем, как его заваривать?",
+    "document": "СОУ_НАЕК_159_2025_zabezpecennia_texnicnoyi_bezpeki_zvariuvannia.pdf",
+    "pages": [
+      67
+    ]
+  },
+  {
+    "lang": "en",
+    "question": "How wide a strip next to the weld edges must be cleaned of rust and paint before arc welding?",
+    "document": "СОУ_НАЕК_159_2025_zabezpecennia_texnicnoyi_bezpeki_zvariuvannia.pdf",
+    "pages": [
+      38
+    ]
+  },
+  {
+    "lang": "en",
+    "question": "How cool must stainless steel get between passes before the welder starts the next one?",
+    "document": "СОУ_НАЕК_159_2025_zabezpecennia_texnicnoyi_bezpeki_zvariuvannia.pdf",
+    "pages": [
+      45
+    ]
+  },
+  {
+    "lang": "en",
+    "question": "How many times may the root of a weld be repaired at the same spot?",
+    "document": "СОУ_НАЕК_159_2025_zabezpecennia_texnicnoyi_bezpeki_zvariuvannia.pdf",
+    "pages": [
+      69
+    ]
+  },
+  {
+    "lang": "uk",
+    "question": "Перевіряти шов на протікання треба до чи після опресування водою?",
+    "document": "СОУ_НАЕК_160_2025_zabezpecennia_texnicnoyi_bezpeki_kontrol_iakosti.pdf",
+    "pages": [
+      34
+    ]
+  },
+  {
+    "lang": "uk",
+    "question": "Що треба записати після термообробки деталі в печі?",
+    "document": "СОУ_НАЕК_160_2025_zabezpecennia_texnicnoyi_bezpeki_kontrol_iakosti.pdf",
+    "pages": [
+      25
+    ]
+  },
+  {
+    "lang": "uk",
+    "question": "Чи можна залишити на шві бризки металу, які помітили під час зовнішнього огляду?",
+    "document": "СОУ_НАЕК_160_2025_zabezpecennia_texnicnoyi_bezpeki_kontrol_iakosti.pdf",
+    "pages": [
+      54
+    ]
+  },
+  {
+    "lang": "uk",
+    "question": "Хто відповідає за те, щоб дефектоскопи й датчики були в робочому стані?",
+    "document": "СОУ_НАЕК_160_2025_zabezpecennia_texnicnoyi_bezpeki_kontrol_iakosti.pdf",
+    "pages": [
+      17
+    ]
+  },
+  {
+    "lang": "ru",
+    "question": "Как должна гореть дуга и вести себя обмазка при пробной сварке новой партии электродов?",
+    "document": "СОУ_НАЕК_160_2025_zabezpecennia_texnicnoyi_bezpeki_kontrol_iakosti.pdf",
+    "pages": [
+      19
+    ]
+  },
+  {
+    "lang": "ru",
+    "question": "Какую полосу вокруг исправленного места на основном металле нужно проверять повторно?",
+    "document": "СОУ_НАЕК_160_2025_zabezpecennia_texnicnoyi_bezpeki_kontrol_iakosti.pdf",
+    "pages": [
+      94,
+      95
+    ]
+  },
+  {
+    "lang": "ru",
+    "question": "Через сколько часов работы нужно снова проверять механические свойства металла трубопроводов?",
+    "document": "СОУ_НАЕК_160_2025_zabezpecennia_texnicnoyi_bezpeki_kontrol_iakosti.pdf",
+    "pages": [
+      29
+    ]
+  },
+  {
+    "lang": "en",
+    "question": "After how many crack-free joints may the amount of dye penetrant testing be cut back?",
+    "document": "СОУ_НАЕК_160_2025_zabezpecennia_texnicnoyi_bezpeki_kontrol_iakosti.pdf",
+    "pages": [
+      35
+    ]
+  },
+  {
+    "lang": "en",
+    "question": "What ferrite content is allowed in austenitic weld metal for parts working below 350 °C?",
+    "document": "СОУ_НАЕК_160_2025_zabezpecennia_texnicnoyi_bezpeki_kontrol_iakosti.pdf",
+    "pages": [
+      93
+    ]
+  },
+  {
+    "lang": "en",
+    "question": "Which inspection method must always come first when a weld is checked several ways?",
+    "document": "СОУ_НАЕК_160_2025_zabezpecennia_texnicnoyi_bezpeki_kontrol_iakosti.pdf",
+    "pages": [
+      34
+    ]
+  }
+]

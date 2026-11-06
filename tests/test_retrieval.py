@@ -415,3 +415,17 @@ def test_fuse_with_and_without_the_keyword_ranking_from_one_expansion(env, cfg):
     with_keywords = fuse(cfg, base + [keyword_ranking(conn, cfg, ws, expansion.keywords)])
     assert [i for i, _ in without] == [ids[0], ids[1]]
     assert dict(with_keywords)[ids[1]] == pytest.approx(dict(without)[ids[1]] + 1 / 61)
+
+
+# req: 10-keyword-and-synonym-expansion-for-keyword-search/TR-9
+def test_keyword_eval_set_has_about_30_questions_in_three_languages():
+    import json
+    from collections import Counter
+    from pathlib import Path
+
+    entries = json.loads((Path(__file__).parent / "data" / "keyword_eval.json").read_text(encoding="utf-8"))
+    langs = Counter(e["lang"] for e in entries)
+    assert 27 <= len(entries) <= 33
+    assert all(langs[lang] >= 8 for lang in ("uk", "ru", "en"))
+    assert all(set(e) == {"lang", "question", "document", "pages"} and e["question"] and e["document"]
+               and e["pages"] and all(isinstance(p, int) for p in e["pages"]) for e in entries)
